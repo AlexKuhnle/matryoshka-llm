@@ -13,6 +13,7 @@ from vit.vit import ViT
 if __name__ == "__main__":
     model = sys.argv[1]
     dataset = sys.argv[2]
+    num_epochs = int(sys.argv[3])
 
     transform = torchvision_transforms.Compose([
         torchvision_transforms.ToImage(),
@@ -57,21 +58,21 @@ if __name__ == "__main__":
     test_dataloader = torch.utils.data.DataLoader(test_dataset, batch_size=32)
 
     if model == "cnn":
-        model = CNN
+        model_cls = CNN
     elif model == "vit":
-        model = ViT
+        model_cls = ViT
     else:
         raise NotImplementedError
     model = ClassifierLightning(
-        model=model,
+        model=model_cls,
         model_kwargs=dict(input_size=input_size, output_size=10, image_size=image_size),
         learning_rate=1e-3,
     )
 
-    logger = lightning.pytorch.loggers.TensorBoardLogger("lightning_logs", name=f"{dataset}-cnn")
+    logger = lightning.pytorch.loggers.TensorBoardLogger("lightning_logs", name=f"{dataset}-{model}")
     trainer = lightning.Trainer(
         logger=logger,
-        max_epochs=5,
+        max_epochs=num_epochs,
         limit_val_batches=0.1,
         val_check_interval=0.1
     )
