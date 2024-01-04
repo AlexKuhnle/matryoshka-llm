@@ -69,7 +69,7 @@ if __name__ == "__main__":
         learning_rate=1e-3,
     )
 
-    logger = lightning.pytorch.loggers.TensorBoardLogger("lightning_logs", name=f"{dataset}-{model}")
+    logger = lightning.pytorch.loggers.TensorBoardLogger("lightning_logs", name=f"{dataset}-{model_cls.__name__}")
     trainer = lightning.Trainer(
         logger=logger,
         max_epochs=num_epochs,
