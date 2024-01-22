@@ -33,8 +33,8 @@ class MultiHead(torch.nn.Module):
         else:
             self.dropout = None
 
-    def forward(self, x):
-        xs = [head(x) for head in self.heads]
+    def forward(self, x, **kwargs):
+        xs = [head(x, **kwargs) for head in self.heads]
         x = torch.cat(xs, dim=self.concat_dim)
         x = self.output_proj(x)
         if self.dropout is not None:

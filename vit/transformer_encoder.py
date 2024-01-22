@@ -41,9 +41,9 @@ class TransformerEncoder(torch.nn.Module):
             dropout=dropout,
         )
 
-    def forward(self, x):
+    def forward(self, x, mask=None):
         res = self.mha_layernorm(x)
-        res = self.mha(res)
+        res = self.mha(res, mask=mask)
         x = x + res
         res = self.mlp_layernorm(x)
         res = self.mlp(res)

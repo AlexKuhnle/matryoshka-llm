@@ -11,8 +11,8 @@ from vit.vit import ViT
 
 
 if __name__ == "__main__":
-    model = sys.argv[1]
-    dataset = sys.argv[2]
+    model_name = sys.argv[1]
+    dataset_name = sys.argv[2]
     num_epochs = int(sys.argv[3])
 
     transform = torchvision_transforms.Compose([
@@ -20,7 +20,7 @@ if __name__ == "__main__":
         torchvision_transforms.ToDtype(torch.float32, scale=True),
     ])
 
-    if dataset == "mnist":
+    if dataset_name == "mnist":
         train_dataset = torchvision.datasets.MNIST(
             root="data",
             train=True,
@@ -33,7 +33,7 @@ if __name__ == "__main__":
             download=True,
             transform=transform,
         )
-    elif dataset == "cifar10":
+    elif dataset_name == "cifar10":
         train_dataset = torchvision.datasets.CIFAR10(
             root="data",
             train=True,
@@ -57,9 +57,9 @@ if __name__ == "__main__":
     train_dataloader = torch.utils.data.DataLoader(train_dataset, batch_size=8, shuffle=True)
     test_dataloader = torch.utils.data.DataLoader(test_dataset, batch_size=32)
 
-    if model == "cnn":
+    if model_name == "cnn":
         model_cls = CNN
-    elif model == "vit":
+    elif model_name == "vit":
         model_cls = ViT
     else:
         raise NotImplementedError
@@ -69,12 +69,12 @@ if __name__ == "__main__":
         learning_rate=1e-3,
     )
 
-    logger = lightning.pytorch.loggers.TensorBoardLogger("lightning_logs", name=f"{dataset}-{model_cls.__name__}")
+    logger = lightning.pytorch.loggers.TensorBoardLogger("lightning_logs_vision", name=f"{dataset_name}-{model_name}")
     trainer = lightning.Trainer(
         logger=logger,
         max_epochs=num_epochs,
         limit_val_batches=0.1,
-        val_check_interval=0.1
+        val_check_interval=0.1,
     )
 
     trainer.fit(model, train_dataloader, test_dataloader)

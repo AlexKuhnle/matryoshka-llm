@@ -140,3 +140,4 @@ cython_debug/
 
 /data
 /lightning_logs
+/lightning_logs_vision
