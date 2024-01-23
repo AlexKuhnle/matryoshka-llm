@@ -6,7 +6,7 @@ from .multi_head import MultiHead
 from .self_attention import SelfAttention
 
 
-class TransformerEncoder(torch.nn.Module):
+class Transformer(torch.nn.Module):
 
     def __init__(
         self,

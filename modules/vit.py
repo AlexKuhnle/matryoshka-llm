@@ -3,7 +3,7 @@ from typing import Callable, Optional, Sequence, Tuple
 
 from .mlp import MLP
 from .patchify import Patchify
-from .transformer_encoder import TransformerEncoder
+from .transformer import Transformer
 
 
 class ViT(torch.nn.Module):
@@ -45,7 +45,7 @@ class ViT(torch.nn.Module):
             self.input_dropout = None
 
         self.trafos = torch.nn.Sequential(*(
-            TransformerEncoder(
+            Transformer(
                 trafo_size,
                 mha_num_heads=trafo_mha_num_heads,
                 mha_head_size=trafo_mha_head_size,

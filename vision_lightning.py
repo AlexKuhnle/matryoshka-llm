@@ -3,7 +3,7 @@ import torch
 from typing import Callable
 
 
-class ClassifierLightning(lightning.LightningModule):
+class VisionLightning(lightning.LightningModule):
 
     def __init__(
         self,

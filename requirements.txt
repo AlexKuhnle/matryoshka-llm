@@ -1,5 +1,7 @@
+datasets
 lightning
 numpy
 tensorboard
+tokenizers
 torch
 torchvision

@@ -5,14 +5,14 @@ import torch
 import torchvision
 from torchvision.transforms import v2 as torchvision_transforms
 
-from classifier_lightning import ClassifierLightning
-from cnn.cnn import CNN
-from vit.vit import ViT
+from modules.cnn import CNN
+from modules.vit import ViT
+from vision_lightning import VisionLightning
 
 
 if __name__ == "__main__":
-    model_name = sys.argv[1]
-    dataset_name = sys.argv[2]
+    dataset_name = sys.argv[1]
+    model_name = sys.argv[2]
     num_epochs = int(sys.argv[3])
 
     transform = torchvision_transforms.Compose([
@@ -63,7 +63,7 @@ if __name__ == "__main__":
         model_cls = ViT
     else:
         raise NotImplementedError
-    model = ClassifierLightning(
+    model = VisionLightning(
         model=model_cls,
         model_kwargs=dict(input_size=input_size, output_size=10, image_size=image_size),
         learning_rate=1e-3,

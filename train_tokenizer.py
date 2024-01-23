@@ -1,11 +1,12 @@
 import datasets
+import sys
 import tokenizers
 
 
 if __name__ == "__main__":
     DEBUG = False
-    dataset_name = "tinystories"
-    vocab_size = 1024
+    dataset_name = sys.argv[1]
+    vocab_size = int(sys.argv[2])
 
     if dataset_name == "tinystories":
         dataset = "roneneldan/TinyStories"
@@ -14,6 +15,7 @@ if __name__ == "__main__":
 
     dataset = datasets.load_dataset(dataset)
     train_dataset = dataset["train"]
+
     if DEBUG:
         train_dataset = train_dataset.select(list(range(10000)))
 
