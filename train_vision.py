@@ -1,5 +1,4 @@
 import lightning
-import numpy as np
 import sys
 import torch
 import torchvision

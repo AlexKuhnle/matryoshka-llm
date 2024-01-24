@@ -34,11 +34,9 @@ if __name__ == "__main__":
     print(f"train: {len(train_dataset)}")
     print(f"test:  {len(test_dataset)}")
 
-    tokenizer_path = f"data/tokenizers/{dataset_name}-bpe"
-    tokenizer = tokenizers.Tokenizer.from_file(tokenizer_path)
-    os.makedirs("lightning_logs_lm/{dataset_name}-{model_name}-{suffix}", exist_ok=True)
-    tokenizer_path = "lightning_logs_lm/{dataset_name}-{model_name}-{suffix}/tokenizer"
-    tokenizer.save(tokenizer_path)
+    tokenizer = tokenizers.Tokenizer.from_file(f"data/tokenizers/{dataset_name}-bpe")
+    os.makedirs(f"lightning_logs_lm/{dataset_name}-{model_name}-{suffix}", exist_ok=True)
+    tokenizer.save(f"lightning_logs_lm/{dataset_name}-{model_name}-{suffix}/tokenizer")
     print(f"vocab: {tokenizer.get_vocab_size()}")
 
     if model_name == "gpt":
@@ -54,7 +52,7 @@ if __name__ == "__main__":
     )
     model.cuda()
 
-    logger = lightning.pytorch.loggers.TensorBoardLogger("lightning_logs_lm", name=f"{dataset_name}-{model_name}")
+    logger = lightning.pytorch.loggers.TensorBoardLogger("lightning_logs_lm", name=f"{dataset_name}-{model_name}-{suffix}")
     trainer = lightning.Trainer(
         logger=logger,
         max_epochs=int(num_epochs),

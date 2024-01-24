@@ -10,7 +10,7 @@ class GPT(torch.nn.Module):
     def __init__(
         self,
         vocab_size: int,
-        context_size: int = 1024,
+        context_length: int = 1024,
         num_trafos: int = 8,
         trafo_size: int = 1024,
         trafo_mha_num_heads: int = 8,
@@ -24,11 +24,11 @@ class GPT(torch.nn.Module):
     ):
         super().__init__()
 
-        self.context_size = context_size
+        self.context_length = context_length
 
         self.embedding = torch.nn.Embedding(vocab_size, trafo_size)
 
-        initial_value = torch.randn(1, self.context_size, trafo_size) * 0.01
+        initial_value = torch.randn(1, self.context_length, trafo_size) * 0.01
         self.pos_embeddings = torch.nn.Parameter(initial_value, requires_grad=True)
 
         if dropout > 0.0:
@@ -60,10 +60,12 @@ class GPT(torch.nn.Module):
         )
 
     def forward(self, x):
-        pos_embeddings = self.pos_embeddings[:, :x.size(1)]
-        pos_embeddings = torch.tile(pos_embeddings, (x.size(0), 1, 1))
-        mask = torch.ones(x.size(1), x.size(1), dtype=torch.bool, device=x.device).tril()
-        mask = torch.tile(mask, (x.size(0), 1, 1))
+        batch_size, context_length = x.size()
+        assert context_length <= self.context_length
+        pos_embeddings = self.pos_embeddings[:, :context_length]
+        pos_embeddings = torch.tile(pos_embeddings, (batch_size, 1, 1))
+        mask = torch.ones(context_length, context_length, dtype=torch.bool, device=x.device).tril()
+        mask = torch.tile(mask, (batch_size, 1, 1))
 
         x = self.embedding(x)
         x = x + pos_embeddings

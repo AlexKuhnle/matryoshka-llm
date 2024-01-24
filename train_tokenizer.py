@@ -4,7 +4,6 @@ import tokenizers
 
 
 if __name__ == "__main__":
-    DEBUG = False
     dataset_name = sys.argv[1]
     vocab_size = int(sys.argv[2])
 
@@ -15,9 +14,8 @@ if __name__ == "__main__":
 
     dataset = datasets.load_dataset(dataset)
     train_dataset = dataset["train"]
-
-    if DEBUG:
-        train_dataset = train_dataset.select(list(range(10000)))
+    train_dataset = train_dataset.select(list(range(1_000_000)))
+    print(f"train: {len(train_dataset)}")
 
     tokenizer = tokenizers.Tokenizer(tokenizers.models.BPE())
     tokenizer.normalizer = tokenizers.normalizers.Sequence([
@@ -44,9 +42,7 @@ if __name__ == "__main__":
     )
     tokenizer.train_from_iterator((x["text"] for x in train_dataset), trainer=trainer)
 
-    if not DEBUG:
-        tokenizer_path = f"data/tokenizers/{dataset_name}-bpe"
-        tokenizer.save(tokenizer_path)
+    tokenizer.save(f"data/tokenizers/{dataset_name}-bpe")
 
     # Example usage:
     # text = "abc"

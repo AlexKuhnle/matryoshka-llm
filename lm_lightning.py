@@ -24,12 +24,12 @@ class LMLightning(lightning.LightningModule):
         assert x == "" or num_outputs == 1
         if num_outputs > 1:
             x = torch.as_tensor(
-                [self.tokenizer.encode("").ids[-self.model.context_size: -1]],
+                [self.tokenizer.encode("").ids[-self.model.context_length: -1]],
                 dtype=torch.int64,
             ).repeat(num_outputs, 1).cuda()
         else:
             x = torch.as_tensor(
-                [self.tokenizer.encode(x).ids[-self.model.context_size: -1]],
+                [self.tokenizer.encode(x).ids[-self.model.context_length: -1]],
                 dtype=torch.int64,
             ).cuda()
 
@@ -51,7 +51,7 @@ class LMLightning(lightning.LightningModule):
     def training_step(self, batch, batch_idx):
         x = batch["text"]
         x = torch.as_tensor(
-            [self.tokenizer.encode(x).ids[:self.model.context_size + 1]],
+            [self.tokenizer.encode(x).ids[:self.model.context_length + 1]],
             dtype=torch.int64,
         ).cuda()
         x, target = x[:, :-1], x[:, 1:]
@@ -64,7 +64,7 @@ class LMLightning(lightning.LightningModule):
     def validation_step(self, batch, batch_idx):
         x = batch["text"]
         x = torch.as_tensor(
-            [self.tokenizer.encode(x).ids[:self.model.context_size + 1]],
+            [self.tokenizer.encode(x).ids[:self.model.context_length + 1]],
             dtype=torch.int64,
         ).cuda()
         x, target = x[:, :-1], x[:, 1:]
