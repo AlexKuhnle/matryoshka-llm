@@ -11,20 +11,22 @@ if __name__ == "__main__":
     model_name = sys.argv[2]
     suffix = sys.argv[3]
 
-    tokenizer = tokenizers.Tokenizer.from_file(
-        f"lightning_logs_lm/{dataset_name}-{model_name}-{suffix}/tokenizer"
-    )
+    lightning_directory = f"lightning_logs_lm/{dataset_name}-{model_name}-{suffix}"
+    tokenizer = tokenizers.Tokenizer.from_file(f"{lightning_directory}/tokenizer")
 
     if model_name == "gpt":
         model_cls = GPT
     else:
         raise NotImplementedError
 
+    version = sorted(
+        int(x[8:]) for x in os.listdir(lightning_directory)
+        if x.startswith("version_")
+    )[-1]
+
     latest_epoch = -1
     latest_checkpoint = None
-    for checkpoint in os.listdir(
-        f"lightning_logs_lm/{dataset_name}-{model_name}-{suffix}/version_0/checkpoints"
-    ):
+    for checkpoint in os.listdir(f"{lightning_directory}/version_{version}/checkpoints"):
         assert checkpoint.startswith("epoch=")
         epoch = int(checkpoint[checkpoint.index("=") + 1: checkpoint.index("-step")])
         assert epoch != latest_epoch
@@ -34,7 +36,7 @@ if __name__ == "__main__":
     assert latest_checkpoint is not None
 
     model = LMLightning.load_from_checkpoint(
-        f"lightning_logs_lm/{dataset_name}-{model_name}-{suffix}/version_0/checkpoints/{latest_checkpoint}",
+        f"{lightning_directory}/version_{version}/checkpoints/{latest_checkpoint}",
         tokenizer=tokenizer,
         model=model_cls,
         model_kwargs=dict(vocab_size=tokenizer.get_vocab_size()),

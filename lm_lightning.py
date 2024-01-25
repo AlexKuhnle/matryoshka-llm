@@ -50,10 +50,19 @@ class LMLightning(lightning.LightningModule):
 
     def training_step(self, batch, batch_idx):
         x = batch["text"]
-        x = torch.as_tensor(
-            [self.tokenizer.encode(x).ids[:self.model.context_length + 1]],
-            dtype=torch.int64,
-        ).cuda()
+        if isinstance(x, str):
+            x = torch.as_tensor(
+                [self.tokenizer.encode(x).ids[:self.model.context_length + 1]],
+                dtype=torch.int64,
+            ).cuda()
+        else:
+            x = [torch.as_tensor(
+                self.tokenizer.encode(seq).ids[:self.model.context_length + 1],
+                dtype=torch.int64,
+            ) for seq in x]
+            x = torch.nn.utils.rnn.pad_sequence(
+                x, batch_first=True, padding_value=self.eos_token,
+            ).cuda()
         x, target = x[:, :-1], x[:, 1:]
         logits = self.model(x)
         logits = logits.transpose(-2, -1)
@@ -62,18 +71,20 @@ class LMLightning(lightning.LightningModule):
         return loss
     
     def validation_step(self, batch, batch_idx):
-        x = batch["text"]
-        x = torch.as_tensor(
-            [self.tokenizer.encode(x).ids[:self.model.context_length + 1]],
-            dtype=torch.int64,
-        ).cuda()
-        x, target = x[:, :-1], x[:, 1:]
-        logits = self.model(x)
-        logits = logits.transpose(-2, -1)
-        loss = self.loss(logits, target)
-        accuracy = (logits.argmax(1) == target).sum() / target.numel()
-        metrics = {"test_loss": loss, "accuracy": accuracy}
-        self.log_dict(metrics, batch_size=x.size(0))
+        if isinstance(batch["text"], str):
+            batch["text"] = [batch["text"]]
+        for x in batch["text"]:
+            x = torch.as_tensor(
+                [self.tokenizer.encode(x).ids[:self.model.context_length + 1]],
+                dtype=torch.int64,
+            ).cuda()
+            x, target = x[:, :-1], x[:, 1:]
+            logits = self.model(x)
+            logits = logits.transpose(-2, -1)
+            loss = self.loss(logits, target)
+            accuracy = (logits.argmax(1) == target).sum() / target.numel()
+            metrics = {"test_loss": loss, "accuracy": accuracy}
+            self.log_dict(metrics, batch_size=x.size(0))
         return metrics
 
     def configure_optimizers(self):

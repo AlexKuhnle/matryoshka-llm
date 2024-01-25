@@ -18,9 +18,9 @@ class GPT(torch.nn.Module):
         trafo_mha_query_key_size: Optional[int] = None,
         trafo_mlp_hidden_sizes: Sequence[int] = [1024],
         trafo_mlp_activation_module: Callable[[], torch.nn.Module] = torch.nn.GELU,
-        mlp_hidden_sizes: Sequence[int] = [1024],
+        mlp_hidden_sizes: Sequence[int] = [],
         mlp_activation_module: torch.nn.Module = torch.nn.Tanh,
-        dropout: float = 0.1,
+        dropout: float = 0.0,
     ):
         super().__init__()
 

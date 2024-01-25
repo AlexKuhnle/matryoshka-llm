@@ -30,20 +30,14 @@ if __name__ == "__main__":
     ])
     tokenizer.post_processor = tokenizers.processors.TemplateProcessing(
         single="<s> $A </s>",
-        pair="<s> $A </s> <s> $B </s>",
         special_tokens=[("<s>", 0), ("</s>", 1)],
     )
     tokenizer.decoder = tokenizers.decoders.BPEDecoder(suffix="</w>")
     trainer = tokenizers.trainers.BpeTrainer(
         vocab_size=vocab_size,
         special_tokens=["<s>", "</s>"],
-        continuing_subword_prefix="<w>",
         end_of_word_suffix="</w>",
     )
     tokenizer.train_from_iterator((x["text"] for x in train_dataset), trainer=trainer)
 
     tokenizer.save(f"data/tokenizers/{dataset_name}-bpe")
-
-    # Example usage:
-    # text = "abc"
-    # ids = self.tokenizer.encode(text).ids

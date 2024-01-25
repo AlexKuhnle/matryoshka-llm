@@ -3,6 +3,7 @@ import lightning
 import os
 import sys
 import tokenizers
+import torch
 
 from modules.gpt import GPT
 from lm_lightning import LMLightning
@@ -34,6 +35,10 @@ if __name__ == "__main__":
     print(f"train: {len(train_dataset)}")
     print(f"test:  {len(test_dataset)}")
 
+    batch_size = 8
+    train_dataloader = torch.utils.data.DataLoader(train_dataset, batch_size=batch_size)
+    test_dataloader = torch.utils.data.DataLoader(test_dataset, batch_size=batch_size)
+
     tokenizer = tokenizers.Tokenizer.from_file(f"data/tokenizers/{dataset_name}-bpe")
     os.makedirs(f"lightning_logs_lm/{dataset_name}-{model_name}-{suffix}", exist_ok=True)
     tokenizer.save(f"lightning_logs_lm/{dataset_name}-{model_name}-{suffix}/tokenizer")
@@ -52,7 +57,9 @@ if __name__ == "__main__":
     )
     model.cuda()
 
-    logger = lightning.pytorch.loggers.TensorBoardLogger("lightning_logs_lm", name=f"{dataset_name}-{model_name}-{suffix}")
+    logger = lightning.pytorch.loggers.TensorBoardLogger(
+        "lightning_logs_lm", name=f"{dataset_name}-{model_name}-{suffix}",
+    )
     trainer = lightning.Trainer(
         logger=logger,
         max_epochs=int(num_epochs),
@@ -60,4 +67,4 @@ if __name__ == "__main__":
         val_check_interval=(1.0 if DEBUG else 0.01),
     )
 
-    trainer.fit(model, train_dataset, test_dataset)
+    trainer.fit(model, train_dataloader, test_dataloader)
