@@ -9,12 +9,15 @@ if __name__ == "__main__":
 
     if dataset_name == "tinystories":
         dataset = "roneneldan/TinyStories"
+    elif dataset_name == "tinyshakespeare":
+        dataset = "tiny_shakespeare"
     else:
         raise NotImplementedError
 
     dataset = datasets.load_dataset(dataset)
     train_dataset = dataset["train"]
-    train_dataset = train_dataset.select(list(range(1_000_000)))
+    if len(train_dataset) > 1_000_000:
+        train_dataset = train_dataset.select(list(range(1_000_000)))
     print(f"train: {len(train_dataset)}")
 
     tokenizer = tokenizers.Tokenizer(tokenizers.models.BPE())

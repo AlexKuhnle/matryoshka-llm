@@ -18,6 +18,8 @@ if __name__ == "__main__":
 
     if dataset_name == "tinystories":
         dataset = "roneneldan/TinyStories"
+    elif dataset_name == "tinyshakespeare":
+        dataset = "tiny_shakespeare"
     else:
         raise NotImplementedError
 
@@ -32,17 +34,9 @@ if __name__ == "__main__":
         train_dataset = train_dataset.select(list(range(10)))
         test_dataset = test_dataset.select(list(range(10)))
 
-    print(f"train: {len(train_dataset)}")
-    print(f"test:  {len(test_dataset)}")
-
-    batch_size = 8
-    train_dataloader = torch.utils.data.DataLoader(train_dataset, batch_size=batch_size)
-    test_dataloader = torch.utils.data.DataLoader(test_dataset, batch_size=batch_size)
-
     tokenizer = tokenizers.Tokenizer.from_file(f"data/tokenizers/{dataset_name}-bpe")
     os.makedirs(f"lightning_logs_lm/{dataset_name}-{model_name}-{suffix}", exist_ok=True)
     tokenizer.save(f"lightning_logs_lm/{dataset_name}-{model_name}-{suffix}/tokenizer")
-    print(f"vocab: {tokenizer.get_vocab_size()}")
 
     if model_name == "gpt":
         model_cls = GPT
@@ -57,14 +51,40 @@ if __name__ == "__main__":
     )
     model.cuda()
 
+    if dataset_name == "tinyshakespeare":
+
+        def split_tinyshakespeare(dataset):
+            text = dataset[0]["text"]
+            while "\n\n\n" in text:
+                text = text.replace("\n\n\n", "\n\n")
+            paragraphs = list(text.split("\n\n"))
+            merged = [paragraphs[0]]
+            for paragraph in paragraphs[1:]:
+                if len(merged[-1]) / 4 < model.model.context_length:
+                    merged[-1] = merged[-1] + paragraph
+                else:
+                    merged.append(paragraph)
+            return datasets.Dataset.from_dict({"text": merged})
+
+        train_dataset = split_tinyshakespeare(train_dataset)
+        test_dataset = split_tinyshakespeare(test_dataset)
+
+    print(f"train: {len(train_dataset)}")
+    print(f"test:  {len(test_dataset)}")
+    print(f"vocab: {tokenizer.get_vocab_size()}")
+
+    batch_size = 8
+    train_dataloader = torch.utils.data.DataLoader(train_dataset, batch_size=batch_size)
+    test_dataloader = torch.utils.data.DataLoader(test_dataset, batch_size=batch_size)
+
     logger = lightning.pytorch.loggers.TensorBoardLogger(
         "lightning_logs_lm", name=f"{dataset_name}-{model_name}-{suffix}",
     )
     trainer = lightning.Trainer(
         logger=logger,
         max_epochs=int(num_epochs),
-        limit_val_batches=(1.0 if DEBUG else 0.01),
-        val_check_interval=(1.0 if DEBUG else 0.01),
+        # limit_val_batches=0.1,  # (1.0 if DEBUG else 0.01),
+        val_check_interval=0.05,  # (1.0 if DEBUG else 0.01),
     )
 
     trainer.fit(model, train_dataloader, test_dataloader)

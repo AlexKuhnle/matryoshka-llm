@@ -21,24 +21,31 @@ class LMLightning(lightning.LightningModule):
         self.learning_rate = learning_rate
 
     def forward(self, x="", num_outputs=1, max_tokens=100):
-        assert x == "" or num_outputs == 1
         if num_outputs > 1:
+            assert isinstance(x, str)
             x = torch.as_tensor(
-                [self.tokenizer.encode("").ids[-self.model.context_length: -1]],
+                [self.tokenizer.encode(x).ids[-self.model.context_length - 1: -1]],
                 dtype=torch.int64,
             ).repeat(num_outputs, 1).cuda()
-        else:
+        elif isinstance(x, str):
             x = torch.as_tensor(
-                [self.tokenizer.encode(x).ids[-self.model.context_length: -1]],
+                [self.tokenizer.encode(x).ids[-self.model.context_length - 1: -1]],
                 dtype=torch.int64,
             ).cuda()
+        else:
+            x = torch.nested.nested_tensor([
+                torch.as_tensor(
+                    self.tokenizer.encode(seq).ids[-self.model.context_length - 1: -1],
+                    dtype=torch.int64,
+                ).cuda() for seq in x
+            ])
 
         eos = torch.zeros([x.size(0)], dtype=torch.bool).cuda()
         for _ in range(max_tokens):
             logits = self.model(x)[:, -1]
             next_token = logits.argmax(1)
             next_token = torch.where(eos, self.eos_token, next_token)
-            x = torch.cat([x, next_token.unsqueeze(1)], dim=1)
+            x = torch.cat([x[-self.model.context_length + 1:], next_token.unsqueeze(1)], dim=1)
             eos = torch.logical_or(eos, next_token == self.eos_token)
             if eos.all().item():
                 break
@@ -51,19 +58,17 @@ class LMLightning(lightning.LightningModule):
     def training_step(self, batch, batch_idx):
         x = batch["text"]
         if isinstance(x, str):
-            x = torch.as_tensor(
-                [self.tokenizer.encode(x).ids[:self.model.context_length + 1]],
-                dtype=torch.int64,
-            ).cuda()
+            x = torch.as_tensor([self.tokenizer.encode(x).ids], dtype=torch.int64).cuda()
         else:
-            x = [torch.as_tensor(
-                self.tokenizer.encode(seq).ids[:self.model.context_length + 1],
-                dtype=torch.int64,
-            ) for seq in x]
+            x = [torch.as_tensor(self.tokenizer.encode(seq).ids, dtype=torch.int64) for seq in x]
             x = torch.nn.utils.rnn.pad_sequence(
                 x, batch_first=True, padding_value=self.eos_token,
             ).cuda()
-        x, target = x[:, :-1], x[:, 1:]
+
+        x, target = (
+            x[:, :min(self.model.context_length, x.size(1) - 1)],
+            x[:, 1: self.model.context_length + 1],
+        )
         logits = self.model(x)
         logits = logits.transpose(-2, -1)
         loss = self.loss(logits, target)
@@ -73,18 +78,25 @@ class LMLightning(lightning.LightningModule):
     def validation_step(self, batch, batch_idx):
         if isinstance(batch["text"], str):
             batch["text"] = [batch["text"]]
+        losses = list()
+        accuracies = list()
         for x in batch["text"]:
-            x = torch.as_tensor(
-                [self.tokenizer.encode(x).ids[:self.model.context_length + 1]],
-                dtype=torch.int64,
-            ).cuda()
-            x, target = x[:, :-1], x[:, 1:]
+            x = torch.as_tensor([self.tokenizer.encode(x).ids], dtype=torch.int64).cuda()
+            x, target = (
+                x[:, :min(self.model.context_length, x.size(1) - 1)],
+                x[:, 1: self.model.context_length + 1],
+            )
             logits = self.model(x)
             logits = logits.transpose(-2, -1)
             loss = self.loss(logits, target)
+            losses.append(loss)
             accuracy = (logits.argmax(1) == target).sum() / target.numel()
-            metrics = {"test_loss": loss, "accuracy": accuracy}
-            self.log_dict(metrics, batch_size=x.size(0))
+            accuracies.append(accuracy)
+        metrics = {
+            "test_loss": torch.stack(losses).mean(),
+            "accuracy": torch.stack(accuracies).mean(),
+        }
+        self.log_dict(metrics, batch_size=len(losses))
         return metrics
 
     def configure_optimizers(self):

@@ -16,6 +16,7 @@ class GPT(torch.nn.Module):
         trafo_mha_num_heads: int = 8,
         trafo_mha_head_size: int = 128,
         trafo_mha_query_key_size: Optional[int] = None,
+        trafo_mha_torch_sdpa: bool = True,
         trafo_mlp_hidden_sizes: Sequence[int] = [1024],
         trafo_mlp_activation_module: Callable[[], torch.nn.Module] = torch.nn.GELU,
         mlp_hidden_sizes: Sequence[int] = [],
@@ -25,6 +26,7 @@ class GPT(torch.nn.Module):
         super().__init__()
 
         self.context_length = context_length
+        self.trafo_mha_torch_sdpa = trafo_mha_torch_sdpa
 
         self.embedding = torch.nn.Embedding(vocab_size, trafo_size)
 
@@ -42,6 +44,7 @@ class GPT(torch.nn.Module):
                 mha_num_heads=trafo_mha_num_heads,
                 mha_head_size=trafo_mha_head_size,
                 mha_query_key_size=trafo_mha_query_key_size,
+                mha_torch_sdpa=trafo_mha_torch_sdpa,
                 mlp_hidden_sizes=trafo_mlp_hidden_sizes,
                 mlp_activation_module=trafo_mlp_activation_module,
                 dropout=dropout,
@@ -64,8 +67,12 @@ class GPT(torch.nn.Module):
         assert context_length <= self.context_length
         pos_embeddings = self.pos_embeddings[:, :context_length]
         pos_embeddings = torch.tile(pos_embeddings, (batch_size, 1, 1))
-        mask = torch.ones(context_length, context_length, dtype=torch.bool, device=x.device).tril()
-        mask = torch.tile(mask, (batch_size, 1, 1))
+        if self.trafo_mha_torch_sdpa:
+            mask = True
+        else:
+            mask = torch.ones(context_length, context_length, dtype=torch.bool, device=x.device)
+            mask = mask.tril()
+            mask = torch.tile(mask, (batch_size, 1, 1))
 
         x = self.embedding(x)
         x = x + pos_embeddings
