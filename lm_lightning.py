@@ -16,8 +16,9 @@ class LMLightning(lightning.LightningModule):
         super().__init__()
         self.tokenizer = tokenizer
         self.eos_token = self.tokenizer.token_to_id("</s>")
+        self.pad_token = self.tokenizer.get_vocab_size()
         self.model = model(**model_kwargs)
-        self.loss = torch.nn.CrossEntropyLoss()
+        self.loss = torch.nn.CrossEntropyLoss(ignore_index=self.pad_token)
         self.learning_rate = learning_rate
 
         def assign_log_function_to_module(module, log_prefix):
@@ -72,13 +73,14 @@ class LMLightning(lightning.LightningModule):
         else:
             x = [torch.as_tensor(self.tokenizer.encode(seq).ids, dtype=torch.int64) for seq in x]
             x = torch.nn.utils.rnn.pad_sequence(
-                x, batch_first=True, padding_value=self.eos_token,
+                x, batch_first=True, padding_value=self.pad_token,
             ).cuda()
 
         x, target = (
             x[:, :min(self.model.context_length, x.size(1) - 1)],
             x[:, 1: self.model.context_length + 1],
         )
+        x[x == self.pad_token] = self.eos_token
         logits = self.model(x)
         logits = logits.transpose(-2, -1)
         loss = self.loss(logits, target)
@@ -86,28 +88,27 @@ class LMLightning(lightning.LightningModule):
         return loss
     
     def validation_step(self, batch, batch_idx):
-        if isinstance(batch["text"], str):
-            batch["text"] = [batch["text"]]
-        losses = list()
-        accuracies = list()
-        for x in batch["text"]:
+        x = batch["text"]
+        if isinstance(x, str):
             x = torch.as_tensor([self.tokenizer.encode(x).ids], dtype=torch.int64).cuda()
-            x, target = (
-                x[:, :min(self.model.context_length, x.size(1) - 1)],
-                x[:, 1: self.model.context_length + 1],
-            )
-            logits = self.model(x)
-            logits = logits.transpose(-2, -1)
-            loss = self.loss(logits, target)
-            losses.append(loss)
-            accuracy = (logits.argmax(1) == target).sum() / target.numel()
-            accuracies.append(accuracy)
-        metrics = {
-            "test_loss": torch.stack(losses).mean(),
-            "accuracy": torch.stack(accuracies).mean(),
-        }
-        self.log_dict(metrics, batch_size=len(losses))
-        return metrics
+        else:
+            x = [torch.as_tensor(self.tokenizer.encode(seq).ids, dtype=torch.int64) for seq in x]
+            x = torch.nn.utils.rnn.pad_sequence(
+                x, batch_first=True, padding_value=self.pad_token,
+            ).cuda()
+
+        x, target = (
+            x[:, :min(self.model.context_length, x.size(1) - 1)],
+            x[:, 1: self.model.context_length + 1],
+        )
+        x[x == self.pad_token] = self.eos_token
+        logits = self.model(x)
+        logits = logits.transpose(-2, -1)
+        loss = self.loss(logits, target)
+        self.log("test_loss", loss, batch_size=x.size(0))
+        accuracy = (logits.argmax(1) == target).sum() / (target != self.pad_token).sum()
+        self.log("accuracy", accuracy, batch_size=x.size(0))
+        return {"loss": loss, "accuracy": accuracy}
 
     def configure_optimizers(self):
         optimizer = torch.optim.Adam(self.parameters(), lr=self.learning_rate)

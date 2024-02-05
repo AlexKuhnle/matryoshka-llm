@@ -56,8 +56,8 @@ class SelfAttention(torch.nn.Module):
                 temperature = 1.0 / temperature
                 attention_logits *= temperature
 
-            self.log("attention-logits-mean", attention_logits[mask].mean())
-            self.log("attention-logits-max", attention_logits[mask].max())
+            # self.log("attention-logits-mean", attention_logits[mask].mean())
+            # self.log("attention-logits-max", attention_logits[mask].max())
 
             if mask is not None:
                 assert not isinstance(mask, bool)
