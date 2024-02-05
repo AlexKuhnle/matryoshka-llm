@@ -25,6 +25,12 @@ class SelfAttention(torch.nn.Module):
         if not self.torch_sdpa:
             self.isqrt_query_key_size = 1.0 / math.sqrt(query_key_size)
 
+        if False:
+            assert not self.torch_sdpa
+            self.temperature_proj = torch.nn.Linear(input_size, 1)
+        else:
+            self.temperature_proj = None
+
     def forward(self, x, mask=None):
         query = self.query_proj(x)
         key = self.key_proj(x)
@@ -40,10 +46,23 @@ class SelfAttention(torch.nn.Module):
             return x
 
         else:
-            attention_scores = (query @ key.transpose(-2, -1)) * self.isqrt_query_key_size
+            attention_logits = (query @ key.transpose(-2, -1)) * self.isqrt_query_key_size
+
+            if self.temperature_proj is not None:
+                temperature = self.temperature_proj(x)
+                temperature = torch.nn.functional.softplus(temperature)
+                min_temperature = 0.01
+                temperature = (temperature + min_temperature) / (math.log(2.0) + min_temperature)
+                temperature = 1.0 / temperature
+                attention_logits *= temperature
+
+            self.log("attention-logits-mean", attention_logits[mask].mean())
+            self.log("attention-logits-max", attention_logits[mask].max())
+
             if mask is not None:
                 assert not isinstance(mask, bool)
-                attention_scores += torch.where(mask, 0.0, float("-inf"))
-            attention = torch.nn.functional.softmax(attention_scores, dim=-1)
+                attention_logits += torch.where(mask, 0.0, float("-inf"))
+
+            attention = torch.nn.functional.softmax(attention_logits, dim=-1)
             x = attention @ value
             return x

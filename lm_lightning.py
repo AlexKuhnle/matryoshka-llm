@@ -20,6 +20,16 @@ class LMLightning(lightning.LightningModule):
         self.loss = torch.nn.CrossEntropyLoss()
         self.learning_rate = learning_rate
 
+        def assign_log_function_to_module(module, log_prefix):
+            def fn_log(name, value):
+                if self.model.training:
+                    self.log(f"{log_prefix}-{name}", value, batch_size=1)
+            assert not hasattr(module, "log")
+            setattr(module, "log", fn_log)
+
+        for module_name, module in self.model.named_modules():
+            assign_log_function_to_module(module, f"gpt-{module_name}")
+
     def forward(self, x="", num_outputs=1, max_tokens=100):
         if num_outputs > 1:
             assert isinstance(x, str)

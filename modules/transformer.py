@@ -28,7 +28,10 @@ class Transformer(torch.nn.Module):
             num_heads=mha_num_heads,
             head_size=mha_head_size,
             head_module=SelfAttention,
-            head_kwargs=dict(query_key_size=mha_query_key_size, torch_sdpa=mha_torch_sdpa),
+            head_kwargs=dict(
+                query_key_size=mha_query_key_size,
+                torch_sdpa=mha_torch_sdpa,
+            ),
             concat_dim=-1,
             dropout=dropout,
         )
