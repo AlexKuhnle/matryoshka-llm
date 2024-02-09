@@ -6,6 +6,7 @@ import tokenizers
 import torch
 
 from modules.gpt import GPT
+from modules.rms_norm import RMSNorm
 from lm_lightning import LMLightning
 
 
@@ -46,8 +47,34 @@ if __name__ == "__main__":
     model = LMLightning(
         tokenizer=tokenizer,
         model=model_cls,
-        model_kwargs=dict(vocab_size=tokenizer.get_vocab_size()),
-        learning_rate=1e-4,
+        model_kwargs=dict(
+            vocab_size=tokenizer.get_vocab_size(),
+            context_length=1024,
+            num_trafos=8,
+            trafo_size=512,
+            position_scheme="learned-add",
+            position_per_layer=False,
+            normalization_module=torch.nn.LayerNorm,  # RMSNorm
+            mha_num_heads=8,
+            mha_head_size=64,
+            mha_query_key_size=None,
+            mha_torch_sdpa=True,
+            mlp_hidden_sizes=[512],  # * 4
+            mlp_activation_module=torch.nn.GELU,  # SiLU
+            mlp_glu=False,  # True
+            dropout=0.0,
+        ),
+        optimizer=torch.optim.Adam,  # AdamW
+        optimizer_kwargs=dict(
+            lr=1e-4,
+            # betas=(0.9, 0.95),
+            # eps=1e-5,
+            # weight_decay=0.1,
+        ),
+        trainer_kwargs=dict(
+            batch_size=8,
+            gradient_clipping=None,  # 1.0
+        )
     )
     model.cuda()
 
@@ -74,8 +101,12 @@ if __name__ == "__main__":
     print(f"vocab: {tokenizer.get_vocab_size()}")
 
     batch_size = 8
-    train_dataloader = torch.utils.data.DataLoader(train_dataset, batch_size=batch_size)
-    test_dataloader = torch.utils.data.DataLoader(test_dataset, batch_size=batch_size)
+    train_dataloader = torch.utils.data.DataLoader(
+        train_dataset, batch_size=model.trainer_kwargs["batch_size"],
+    )
+    test_dataloader = torch.utils.data.DataLoader(
+        test_dataset, batch_size=model.trainer_kwargs["batch_size"],
+    )
 
     logger = lightning.pytorch.loggers.TensorBoardLogger(
         "lightning_logs_lm", name=f"{dataset_name}-{model_name}-{suffix}",
@@ -85,6 +116,7 @@ if __name__ == "__main__":
         max_epochs=int(num_epochs),
         # limit_val_batches=0.1,  # (1.0 if DEBUG else 0.01),
         val_check_interval=0.05,  # (1.0 if DEBUG else 0.01),
+        gradient_clip_val=model.trainer_kwargs["gradient_clipping"],
     )
 
     trainer.fit(model, train_dataloader, test_dataloader)

@@ -11,17 +11,19 @@ class Transformer(torch.nn.Module):
     def __init__(
         self,
         input_size: int,
+        normalization_module: Callable[[int], torch.nn.Module],
         mha_num_heads: int,
         mha_head_size: int,
         mlp_hidden_sizes: Sequence[int],
         mlp_activation_module: Callable[[], torch.nn.Module],
         mha_query_key_size: Optional[int] = None,
         mha_torch_sdpa: bool = True,
+        mlp_glu: bool = False,
         dropout: float = 0.0,
     ):
         super().__init__()
 
-        self.mha_layernorm = torch.nn.LayerNorm(input_size)
+        self.mha_norm = normalization_module(input_size)
         self.mha = MultiHead(
             input_size,
             input_size,
@@ -36,20 +38,21 @@ class Transformer(torch.nn.Module):
             dropout=dropout,
         )
 
-        self.mlp_layernorm = torch.nn.LayerNorm(input_size)
+        self.mlp_norm = normalization_module(input_size)
         self.mlp = MLP(
             input_size,
             input_size,
             hidden_sizes=mlp_hidden_sizes,
             activation_module=mlp_activation_module,
+            glu=mlp_glu,
             dropout=dropout,
         )
 
-    def forward(self, x, mask=None):
-        res = self.mha_layernorm(x)
-        res = self.mha(res, mask=mask)
+    def forward(self, x, mask=None, fn_apply_pos=None):
+        res = self.mha_norm(x)
+        res = self.mha(res, mask=mask, fn_apply_pos=fn_apply_pos)
         x = x + res
-        res = self.mlp_layernorm(x)
+        res = self.mlp_norm(x)
         res = self.mlp(res)
         x = x + res
         return x

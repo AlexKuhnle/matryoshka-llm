@@ -2,6 +2,7 @@ import torch
 from typing import Callable, Optional, Sequence
 
 from .mlp import MLP
+from .position import init_position_scheme
 from .transformer import Transformer
 
 
@@ -10,28 +11,34 @@ class GPT(torch.nn.Module):
     def __init__(
         self,
         vocab_size: int,
-        context_length: int = 1024,
-        num_trafos: int = 8,
-        trafo_size: int = 1024,
-        trafo_mha_num_heads: int = 8,
-        trafo_mha_head_size: int = 128,
-        trafo_mha_query_key_size: Optional[int] = None,
-        trafo_mha_torch_sdpa: bool = True,
-        trafo_mlp_hidden_sizes: Sequence[int] = [1024],
-        trafo_mlp_activation_module: Callable[[], torch.nn.Module] = torch.nn.GELU,
-        mlp_hidden_sizes: Sequence[int] = [],
-        mlp_activation_module: torch.nn.Module = torch.nn.Tanh,
-        dropout: float = 0.0,
+        context_length: int,
+        num_trafos: int,
+        trafo_size: int,
+        position_scheme: str,
+        position_per_layer: bool,
+        normalization_module: Callable[[int], torch.nn.Module],
+        mha_num_heads: int,
+        mha_head_size: int,
+        mha_query_key_size: Optional[int],
+        mha_torch_sdpa: bool,
+        mlp_hidden_sizes: Sequence[int],
+        mlp_activation_module: Callable[[], torch.nn.Module],
+        mlp_glu: bool,
+        dropout: float,
     ):
         super().__init__()
 
         self.context_length = context_length
-        self.trafo_mha_torch_sdpa = trafo_mha_torch_sdpa
+        self.mha_torch_sdpa = mha_torch_sdpa
 
         self.embedding = torch.nn.Embedding(vocab_size, trafo_size)
 
-        initial_value = torch.randn(1, self.context_length, trafo_size) * 0.01
-        self.pos_embeddings = torch.nn.Parameter(initial_value, requires_grad=True)
+        self.fn_apply_pos, self.pos_embeddings = init_position_scheme(
+            scheme=position_scheme,
+            context_length=self.context_length,
+            trafo_size=(mha_head_size if position_per_layer else trafo_size),
+        )
+        self.pos_per_layer = position_per_layer
 
         if dropout > 0.0:
             self.input_dropout = torch.nn.Dropout(dropout)
@@ -41,33 +48,26 @@ class GPT(torch.nn.Module):
         self.trafos = torch.nn.ModuleList([
             Transformer(
                 trafo_size,
-                mha_num_heads=trafo_mha_num_heads,
-                mha_head_size=trafo_mha_head_size,
-                mha_query_key_size=trafo_mha_query_key_size,
-                mha_torch_sdpa=trafo_mha_torch_sdpa,
-                mlp_hidden_sizes=trafo_mlp_hidden_sizes,
-                mlp_activation_module=trafo_mlp_activation_module,
+                normalization_module=normalization_module,
+                mha_num_heads=mha_num_heads,
+                mha_head_size=mha_head_size,
+                mha_query_key_size=mha_query_key_size,
+                mha_torch_sdpa=mha_torch_sdpa,
+                mlp_hidden_sizes=mlp_hidden_sizes,
+                mlp_activation_module=mlp_activation_module,
+                mlp_glu=mlp_glu,
                 dropout=dropout,
             ) for _ in range(num_trafos)
         ])
 
-        self.trafo_layernorm = torch.nn.LayerNorm(trafo_size)
+        self.final_norm = normalization_module(trafo_size)
 
-        self.mlp = MLP(
-            trafo_size,
-            vocab_size,
-            hidden_sizes=mlp_hidden_sizes,
-            activation_module=mlp_activation_module,
-            dropout=dropout,
-            final_dropout=False,
-        )
+        self.prediction = torch.nn.Linear(trafo_size, vocab_size)
 
     def forward(self, x):
         batch_size, context_length = x.size()
         assert context_length <= self.context_length
-        pos_embeddings = self.pos_embeddings[:, :context_length]
-        pos_embeddings = torch.tile(pos_embeddings, (batch_size, 1, 1))
-        if self.trafo_mha_torch_sdpa:
+        if self.mha_torch_sdpa:
             mask = True
         else:
             mask = torch.ones(context_length, context_length, dtype=torch.bool, device=x.device)
@@ -75,14 +75,15 @@ class GPT(torch.nn.Module):
             mask = torch.tile(mask, (batch_size, 1, 1))
 
         x = self.embedding(x)
-        x = x + pos_embeddings
+        if not self.pos_per_layer:
+            x = self.fn_apply_pos(x)
         if self.input_dropout is not None:
             x = self.input_dropout(x)
-
         for trafo in self.trafos:
-            x = trafo(x, mask)
-        x = self.trafo_layernorm(x)
-
-        x = self.mlp(x)
-
+            if self.pos_per_layer:
+                x = trafo(x, mask=mask, fn_apply_pos=self.fn_apply_pos)
+            else:
+                x = trafo(x, mask=mask)
+        x = self.final_norm(x)
+        x = self.prediction(x)
         return x

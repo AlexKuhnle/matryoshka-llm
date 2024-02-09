@@ -11,15 +11,25 @@ class LMLightning(lightning.LightningModule):
         tokenizer: tokenizers.Tokenizer,
         model: Callable[..., torch.nn.Module],
         model_kwargs: dict,
-        learning_rate: float,
+        optimizer: Callable[..., torch.optim.Optimizer],
+        optimizer_kwargs: dict,
+        trainer_kwargs: dict
     ):
         super().__init__()
+
+        self.save_hyperparameters(model_kwargs)
+        self.save_hyperparameters("optimizer")
+        self.save_hyperparameters(optimizer_kwargs)
+        self.save_hyperparameters(trainer_kwargs)
+
         self.tokenizer = tokenizer
         self.eos_token = self.tokenizer.token_to_id("</s>")
         self.pad_token = self.tokenizer.get_vocab_size()
         self.model = model(**model_kwargs)
         self.loss = torch.nn.CrossEntropyLoss(ignore_index=self.pad_token)
-        self.learning_rate = learning_rate
+        self.optimizer_module = optimizer
+        self.optimizer_kwargs = optimizer_kwargs
+        self.trainer_kwargs = trainer_kwargs
 
         def assign_log_function_to_module(module, log_prefix):
             def fn_log(name, value):
@@ -111,5 +121,4 @@ class LMLightning(lightning.LightningModule):
         return {"loss": loss, "accuracy": accuracy}
 
     def configure_optimizers(self):
-        optimizer = torch.optim.Adam(self.parameters(), lr=self.learning_rate)
-        return optimizer
+        return self.optimizer_module(self.parameters(), **self.optimizer_kwargs)

@@ -31,10 +31,14 @@ class SelfAttention(torch.nn.Module):
         else:
             self.temperature_proj = None
 
-    def forward(self, x, mask=None):
+    def forward(self, x, mask=None, fn_apply_pos=None):
         query = self.query_proj(x)
         key = self.key_proj(x)
         value = self.value_proj(x)
+
+        if fn_apply_pos is not None:
+            query = fn_apply_pos(query)
+            key = fn_apply_pos(key)
 
         if self.torch_sdpa:
             is_causal = (mask is True)
