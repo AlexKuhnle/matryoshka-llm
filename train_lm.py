@@ -52,28 +52,29 @@ if __name__ == "__main__":
             context_length=1024,
             num_trafos=8,
             trafo_size=512,
-            position_scheme="learned-add",
-            position_per_layer=False,
-            normalization_module=torch.nn.LayerNorm,  # RMSNorm
-            mha_num_heads=8,
-            mha_head_size=64,
-            mha_query_key_size=None,
-            mha_torch_sdpa=True,
+            position_scheme="rope",
+            position_per_layer=True,
+            normalization_module=RMSNorm,  # RMSNorm
+            mhsa_num_heads=8,
+            mhsa_kv_groups=None,
+            mhsa_head_size=64,
+            mhsa_qk_size=None,
+            mhsa_torch_sdpa=True,
             mlp_hidden_sizes=[512],  # * 4
-            mlp_activation_module=torch.nn.GELU,  # SiLU
-            mlp_glu=False,  # True
+            mlp_activation_module=torch.nn.SiLU,  # SiLU
+            mlp_glu=True,  # True
             dropout=0.0,
         ),
-        optimizer=torch.optim.Adam,  # AdamW
+        optimizer=torch.optim.Adam,
         optimizer_kwargs=dict(
-            lr=1e-4,
+            lr=1e-3,
             # betas=(0.9, 0.95),
             # eps=1e-5,
             # weight_decay=0.1,
         ),
         trainer_kwargs=dict(
             batch_size=8,
-            gradient_clipping=None,  # 1.0
+            gradient_clipping=1.0,  # 1.0
         )
     )
     model.cuda()

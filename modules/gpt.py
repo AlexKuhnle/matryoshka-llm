@@ -17,10 +17,11 @@ class GPT(torch.nn.Module):
         position_scheme: str,
         position_per_layer: bool,
         normalization_module: Callable[[int], torch.nn.Module],
-        mha_num_heads: int,
-        mha_head_size: int,
-        mha_query_key_size: Optional[int],
-        mha_torch_sdpa: bool,
+        mhsa_num_heads: int,
+        mhsa_kv_groups: Optional[int],
+        mhsa_head_size: int,
+        mhsa_qk_size: Optional[int],
+        mhsa_torch_sdpa: bool,
         mlp_hidden_sizes: Sequence[int],
         mlp_activation_module: Callable[[], torch.nn.Module],
         mlp_glu: bool,
@@ -29,14 +30,14 @@ class GPT(torch.nn.Module):
         super().__init__()
 
         self.context_length = context_length
-        self.mha_torch_sdpa = mha_torch_sdpa
+        self.mhsa_torch_sdpa = mhsa_torch_sdpa
 
         self.embedding = torch.nn.Embedding(vocab_size, trafo_size)
 
         self.fn_apply_pos, self.pos_embeddings = init_position_scheme(
             scheme=position_scheme,
             context_length=self.context_length,
-            trafo_size=(mha_head_size if position_per_layer else trafo_size),
+            trafo_size=(mhsa_head_size if position_per_layer else trafo_size),
         )
         self.pos_per_layer = position_per_layer
 
@@ -49,10 +50,11 @@ class GPT(torch.nn.Module):
             Transformer(
                 trafo_size,
                 normalization_module=normalization_module,
-                mha_num_heads=mha_num_heads,
-                mha_head_size=mha_head_size,
-                mha_query_key_size=mha_query_key_size,
-                mha_torch_sdpa=mha_torch_sdpa,
+                mhsa_num_heads=mhsa_num_heads,
+                mhsa_kv_groups=mhsa_kv_groups,
+                mhsa_head_size=mhsa_head_size,
+                mhsa_qk_size=mhsa_qk_size,
+                mhsa_torch_sdpa=mhsa_torch_sdpa,
                 mlp_hidden_sizes=mlp_hidden_sizes,
                 mlp_activation_module=mlp_activation_module,
                 mlp_glu=mlp_glu,
@@ -67,7 +69,7 @@ class GPT(torch.nn.Module):
     def forward(self, x):
         batch_size, context_length = x.size()
         assert context_length <= self.context_length
-        if self.mha_torch_sdpa:
+        if self.mhsa_torch_sdpa:
             mask = True
         else:
             mask = torch.ones(context_length, context_length, dtype=torch.bool, device=x.device)
