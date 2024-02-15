@@ -12,8 +12,8 @@ class MultiHead(torch.nn.Module):
         head_size: int,
         head_module: Callable[..., torch.nn.Module],
         head_kwargs: dict,
-        concat_dim: int = -1,
-        dropout: float = 0.0,
+        concat_dim: int,
+        dropout: float,
     ):
         super().__init__()
 

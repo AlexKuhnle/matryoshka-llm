@@ -9,17 +9,18 @@ class SelfAttention(torch.nn.Module):
         self,
         input_size: int,
         output_size: int,
-        query_key_size: Optional[int] = None,
-        torch_sdpa: bool = True,
+        query_key_size: Optional[int],
+        torch_sdpa: bool,
+        bias: bool,
     ):
         super().__init__()
 
         if query_key_size is None:
             query_key_size = output_size
 
-        self.query_proj = torch.nn.Linear(input_size, query_key_size)
-        self.key_proj = torch.nn.Linear(input_size, query_key_size)
-        self.value_proj = torch.nn.Linear(input_size, output_size)
+        self.query_proj = torch.nn.Linear(input_size, query_key_size, bias=bias)
+        self.key_proj = torch.nn.Linear(input_size, query_key_size, bias=bias)
+        self.value_proj = torch.nn.Linear(input_size, output_size, bias=bias)
 
         self.torch_sdpa = torch_sdpa
         if not self.torch_sdpa:
@@ -27,7 +28,7 @@ class SelfAttention(torch.nn.Module):
 
         if False:
             assert not self.torch_sdpa
-            self.temperature_proj = torch.nn.Linear(input_size, 1)
+            self.temperature_proj = torch.nn.Linear(input_size, 1, bias=bias)
         else:
             self.temperature_proj = None
 

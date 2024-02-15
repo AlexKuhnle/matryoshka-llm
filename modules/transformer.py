@@ -12,14 +12,16 @@ class Transformer(torch.nn.Module):
         input_size: int,
         normalization_module: Callable[[int], torch.nn.Module],
         mhsa_num_heads: int,
+        mhsa_kv_groups: Optional[int],
         mhsa_head_size: int,
+        mhsa_qk_size: Optional[int],
+        mhsa_torch_sdpa: bool,
+        mhsa_flash_sdpa: bool,
         mlp_hidden_sizes: Sequence[int],
         mlp_activation_module: Callable[[], torch.nn.Module],
-        mhsa_kv_groups: Optional[int] = None,
-        mhsa_qk_size: Optional[int] = None,
-        mhsa_torch_sdpa: bool = True,
-        mlp_glu: bool = False,
-        dropout: float = 0.0,
+        mlp_glu: bool,
+        bias: bool,
+        dropout: float,
     ):
         super().__init__()
 
@@ -33,6 +35,8 @@ class Transformer(torch.nn.Module):
             head_size=mhsa_head_size,
             qk_size=mhsa_qk_size,
             torch_sdpa=mhsa_torch_sdpa,
+            flash_sdpa=mhsa_flash_sdpa,
+            bias=bias,
             dropout=dropout,
         )
 
@@ -43,7 +47,9 @@ class Transformer(torch.nn.Module):
             hidden_sizes=mlp_hidden_sizes,
             activation_module=mlp_activation_module,
             glu=mlp_glu,
+            bias=bias,
             dropout=dropout,
+            final_dropout=True,
         )
 
     def forward(self, x, mask=None, fn_apply_pos=None):

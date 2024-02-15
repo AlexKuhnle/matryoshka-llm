@@ -55,15 +55,17 @@ if __name__ == "__main__":
             position_scheme="rope",
             position_per_layer=True,
             normalization_module=RMSNorm,  # RMSNorm
-            mhsa_num_heads=8,
+            mhsa_num_heads=16,
             mhsa_kv_groups=None,
-            mhsa_head_size=64,
+            mhsa_head_size=32,
             mhsa_qk_size=None,
             mhsa_torch_sdpa=True,
+            mhsa_flash_sdpa=False,
             mlp_hidden_sizes=[512],  # * 4
             mlp_activation_module=torch.nn.SiLU,  # SiLU
             mlp_glu=True,  # True
-            dropout=0.0,
+            bias=False,
+            dropout=0.01,
         ),
         optimizer=torch.optim.Adam,
         optimizer_kwargs=dict(

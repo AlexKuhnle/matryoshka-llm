@@ -22,15 +22,17 @@ class GPT(torch.nn.Module):
         mhsa_head_size: int,
         mhsa_qk_size: Optional[int],
         mhsa_torch_sdpa: bool,
+        mhsa_flash_sdpa: bool,
         mlp_hidden_sizes: Sequence[int],
         mlp_activation_module: Callable[[], torch.nn.Module],
         mlp_glu: bool,
+        bias: bool,
         dropout: float,
     ):
         super().__init__()
 
         self.context_length = context_length
-        self.mhsa_torch_sdpa = mhsa_torch_sdpa
+        self.requires_mask_tensor = (not mhsa_torch_sdpa and not mhsa_flash_sdpa)
 
         self.embedding = torch.nn.Embedding(vocab_size, trafo_size)
 
@@ -55,26 +57,28 @@ class GPT(torch.nn.Module):
                 mhsa_head_size=mhsa_head_size,
                 mhsa_qk_size=mhsa_qk_size,
                 mhsa_torch_sdpa=mhsa_torch_sdpa,
+                mhsa_flash_sdpa=mhsa_flash_sdpa,
                 mlp_hidden_sizes=mlp_hidden_sizes,
                 mlp_activation_module=mlp_activation_module,
                 mlp_glu=mlp_glu,
+                bias=bias,
                 dropout=dropout,
             ) for _ in range(num_trafos)
         ])
 
         self.final_norm = normalization_module(trafo_size)
 
-        self.prediction = torch.nn.Linear(trafo_size, vocab_size)
+        self.prediction = torch.nn.Linear(trafo_size, vocab_size, bias=bias)
 
     def forward(self, x):
         batch_size, context_length = x.size()
         assert context_length <= self.context_length
-        if self.mhsa_torch_sdpa:
-            mask = True
-        else:
+        if self.requires_mask_tensor:
             mask = torch.ones(context_length, context_length, dtype=torch.bool, device=x.device)
             mask = mask.tril()
             mask = torch.tile(mask, (batch_size, 1, 1))
+        else:
+            mask = True
 
         x = self.embedding(x)
         if not self.pos_per_layer:

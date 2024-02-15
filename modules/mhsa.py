@@ -1,3 +1,4 @@
+import flash_attn
 import math
 import torch
 from typing import Optional
@@ -10,11 +11,13 @@ class MHSA(torch.nn.Module):
         input_size: int,
         output_size: int,
         num_heads: int,
+        kv_groups: Optional[int],
         head_size: int,
-        kv_groups: Optional[int] = None,
-        qk_size: Optional[int] = None,
-        torch_sdpa: bool = True,
-        dropout: float = 0.0,
+        qk_size: Optional[int],
+        torch_sdpa: bool,
+        flash_sdpa: bool,
+        bias: bool,
+        dropout: float,
     ):
         super().__init__()
 
@@ -25,18 +28,20 @@ class MHSA(torch.nn.Module):
         self.head_size = head_size
         self.qk_size = self.head_size if qk_size is None else qk_size
 
-        self.query_proj = torch.nn.Linear(input_size, self.num_heads * self.qk_size)
-        self.key_proj = torch.nn.Linear(input_size, self.kv_groups * self.qk_size)
-        self.value_proj = torch.nn.Linear(input_size, self.kv_groups * self.head_size)
-        self.output_proj = torch.nn.Linear(self.num_heads * self.head_size, output_size)
+        self.query_proj = torch.nn.Linear(input_size, self.num_heads * self.qk_size, bias=bias)
+        self.key_proj = torch.nn.Linear(input_size, self.kv_groups * self.qk_size, bias=bias)
+        self.value_proj = torch.nn.Linear(input_size, self.kv_groups * self.head_size, bias=bias)
+        self.output_proj = torch.nn.Linear(self.num_heads * self.head_size, output_size, bias=bias)
 
         if dropout > 0.0:
             self.dropout = torch.nn.Dropout(dropout)
         else:
             self.dropout = None
 
+        assert not torch_sdpa or not flash_sdpa
         self.torch_sdpa = torch_sdpa
-        if not self.torch_sdpa:
+        self.flash_sdpa = flash_sdpa
+        if not self.torch_sdpa and not self.flash_sdpa:
             self.isqrt_qk_size = 1.0 / math.sqrt(self.qk_size)
 
     def forward(self, x, mask=None, fn_apply_pos=None):
@@ -71,7 +76,14 @@ class MHSA(torch.nn.Module):
                 query, key, value,
                 attn_mask=mask, dropout_p=0.0, is_causal=is_causal, scale=None,
             )
-
+        elif self.flash_sdpa:
+            is_causal = (mask is True)
+            assert not isinstance(mask, torch.Tensor)
+            x = flash_attn.flash_attn_func(
+                query, key, value,
+                dropout_p=0.0, softmax_scale=None, causal=is_causal, window_size=(-1, -1),
+                alibi_slopes=None, deterministic=False, return_attn_probs=False,
+            )
         else:
             attention_logits = (query @ key.transpose(-2, -1)) * self.isqrt_qk_size
 
