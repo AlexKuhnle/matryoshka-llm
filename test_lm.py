@@ -1,8 +1,12 @@
 import os
 import sys
+import timeit
 import tokenizers
+import torch
+import yaml
 
 from modules.gpt import GPT
+from modules.rms_norm import RMSNorm
 from lm_lightning import LMLightning
 
 
@@ -35,16 +39,80 @@ if __name__ == "__main__":
             latest_checkpoint = checkpoint
     assert latest_checkpoint is not None
 
+    with open(f"{lightning_directory}/version_{version}/hparams.yaml") as file:
+        model_kwargs = yaml.full_load(file)["model_kwargs"]
     model = LMLightning.load_from_checkpoint(
         f"{lightning_directory}/version_{version}/checkpoints/{latest_checkpoint}",
         tokenizer=tokenizer,
         model=model_cls,
-        model_kwargs=dict(vocab_size=tokenizer.get_vocab_size()),
-        learning_rate=1e-4,
+        model_kwargs=model_kwargs,
     )
     model.cuda()
+    model.eval()  # TODO: why not default?
 
-    print(model("On a beautiful day", max_tokens=1000))
-    for output in model(num_outputs=3, max_tokens=1000):
+    with torch.inference_mode():
+
+        print(model("On a beautiful day", max_tokens=1000))
         print()
-        print(output)
+        print(model(max_tokens=1000))
+        print()
+
+        target = model(max_tokens=1000)
+        assert model(max_tokens=1000, use_kv_cache=False) == target
+        assert all(output == target for output in model(num_outputs=5, max_tokens=1000))
+
+        prompt = target[: len(target) // 2]
+        print("kv-cache  prompt  ")
+        # print("   -        -     ",
+        #     timeit.timeit((lambda: model(max_tokens=1000, use_kv_cache=False)), number=100)
+        # )
+        print("   x        -     ",
+            timeit.timeit((lambda: model(max_tokens=1000, use_kv_cache=True)), number=100)
+        )
+        # print("   -        x     ",
+        #     timeit.timeit((lambda: model(prompt, max_tokens=1000, use_kv_cache=False)), number=100)
+        # )
+        print("   x        x     ",
+            timeit.timeit((lambda: model(prompt, max_tokens=1000, use_kv_cache=True)), number=100)
+        )
+
+
+# kv-cache  prompt  
+#    -        -      48.81834405194968
+#    x        -      63.18877077056095
+#    -        x      25.512745718006045
+#    x        x      33.947821103967726
+
+
+# model_kwargs["mhsa_torch_sdpa"] = False
+
+# kv-cache  prompt  
+#    -        -      60.02716588694602
+#    x        -      64.01402305299416
+#    -        x      31.3807279933244
+#    x        x      34.389294831082225
+
+
+# tensor instead of list version
+
+# kv-cache  prompt  
+#    x        -      75.76040950091556
+#    x        x      41.965693342033774
+
+
+# don't move between cuda and cpu
+
+#    x        -      58.80913425562903
+#    x        x      30.699874467216432
+
+
+# using sdpa
+
+#    x        -      55.4217246430926
+#    x        x      29.00324774114415
+
+
+# move just before sdpa
+
+#    x        -      55.17228568624705
+#    x        x      28.97558852704242

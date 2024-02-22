@@ -1,5 +1,5 @@
 import torch
-from typing import Callable, Optional, Sequence
+from typing import Callable, Optional, Sequence, Tuple, Union
 
 from .mhsa import MHSA
 from .mlp import MLP
@@ -52,11 +52,23 @@ class Transformer(torch.nn.Module):
             final_dropout=True,
         )
 
-    def forward(self, x, mask=None, fn_apply_pos=None):
+    def forward(
+        self,
+        x,
+        mask: Optional[Union[bool, torch.Tensor]] = None,
+        fn_apply_pos: Optional[Callable[[torch.Tensor, Optional[int]], torch.Tensor]] = None,
+        kv_cache: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,
+    ):
         res = self.mhsa_norm(x)
-        res = self.mhsa(res, mask=mask, fn_apply_pos=fn_apply_pos)
+        if kv_cache is None:
+            res = self.mhsa(res, mask=mask, fn_apply_pos=fn_apply_pos)
+        else:
+            res, kv_cache = self.mhsa(res, mask=mask, fn_apply_pos=fn_apply_pos, kv_cache=kv_cache)
         x = x + res
         res = self.mlp_norm(x)
         res = self.mlp(res)
         x = x + res
-        return x
+        if kv_cache is None:
+            return x
+        else:
+            return x, kv_cache

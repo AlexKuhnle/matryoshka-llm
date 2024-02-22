@@ -34,11 +34,11 @@ def init_position_scheme(scheme, context_length, trafo_size):
         freqs_cis = torch.polar(torch.ones_like(freqs), freqs)
         pos_embeddings = torch.nn.Parameter(freqs_cis, requires_grad=False)
 
-        def fn_apply_pos(x):
+        def fn_apply_pos(x, start=0):
             *shape, context, size = x.size()
-            assert context <= context_length and size % 2 == 0
+            assert start + context <= context_length and size % 2 == 0
             x = torch.view_as_complex(x.reshape(*shape, context, size // 2, 2))
-            x = x * pos_embeddings[:context].expand(x.size())
+            x = x * pos_embeddings[start: start + context].expand(x.size())
             return torch.view_as_real(x).reshape(*shape, context, size)
 
     else:

@@ -51,21 +51,22 @@ if __name__ == "__main__":
             vocab_size=tokenizer.get_vocab_size(),
             context_length=1024,
             num_trafos=8,
-            trafo_size=512,
+            trafo_size=128,
+            embedding_norm=True,
             position_scheme="rope",
             position_per_layer=True,
             normalization_module=RMSNorm,  # RMSNorm
-            mhsa_num_heads=16,
+            mhsa_num_heads=8,
             mhsa_kv_groups=None,
-            mhsa_head_size=32,
+            mhsa_head_size=16,
             mhsa_qk_size=None,
             mhsa_torch_sdpa=True,
             mhsa_flash_sdpa=False,
-            mlp_hidden_sizes=[512],  # * 4
+            mlp_hidden_sizes=[128],  # * 4
             mlp_activation_module=torch.nn.SiLU,  # SiLU
             mlp_glu=True,  # True
-            bias=False,
-            dropout=0.01,
+            bias=True,
+            dropout=0.0,
         ),
         optimizer=torch.optim.Adam,
         optimizer_kwargs=dict(
@@ -75,7 +76,7 @@ if __name__ == "__main__":
             # weight_decay=0.1,
         ),
         trainer_kwargs=dict(
-            batch_size=8,
+            batch_size=16,
             gradient_clipping=1.0,  # 1.0
         )
     )

@@ -1,7 +1,7 @@
 import lightning
 import tokenizers
 import torch
-from typing import Callable
+from typing import Callable, Optional
 
 
 class LMLightning(lightning.LightningModule):
@@ -11,16 +11,17 @@ class LMLightning(lightning.LightningModule):
         tokenizer: tokenizers.Tokenizer,
         model: Callable[..., torch.nn.Module],
         model_kwargs: dict,
-        optimizer: Callable[..., torch.optim.Optimizer],
-        optimizer_kwargs: dict,
-        trainer_kwargs: dict
+        optimizer: Optional[Callable[..., torch.optim.Optimizer]] = None,
+        optimizer_kwargs: Optional[dict] = None,
+        trainer_kwargs: Optional[dict] = None,
     ):
         super().__init__()
 
-        self.save_hyperparameters(model_kwargs)
-        self.save_hyperparameters("optimizer")
-        self.save_hyperparameters(optimizer_kwargs)
-        self.save_hyperparameters(trainer_kwargs)
+        if optimizer is not None:
+            self.save_hyperparameters({"model_kwargs": model_kwargs})
+            self.save_hyperparameters("optimizer")
+            self.save_hyperparameters({"optimizer_kwargs": optimizer_kwargs})
+            self.save_hyperparameters({"trainer_kwargs": trainer_kwargs})
 
         self.tokenizer = tokenizer
         self.eos_token = self.tokenizer.token_to_id("</s>")
@@ -41,7 +42,7 @@ class LMLightning(lightning.LightningModule):
         for module_name, module in self.model.named_modules():
             assign_log_function_to_module(module, f"gpt-{module_name}")
 
-    def forward(self, x="", num_outputs=1, max_tokens=100):
+    def forward(self, x="", num_outputs=1, max_tokens=100, use_kv_cache=True):
         if num_outputs > 1:
             assert isinstance(x, str)
             x = torch.as_tensor(
@@ -54,22 +55,32 @@ class LMLightning(lightning.LightningModule):
                 dtype=torch.int64,
             ).cuda()
         else:
-            x = torch.nested.nested_tensor([
-                torch.as_tensor(
-                    self.tokenizer.encode(seq).ids[-self.model.context_length - 1: -1],
-                    dtype=torch.int64,
-                ).cuda() for seq in x
-            ])
+            raise NotImplementedError
 
-        eos = torch.zeros([x.size(0)], dtype=torch.bool).cuda()
-        for _ in range(max_tokens):
-            logits = self.model(x)[:, -1]
+        batch_size = x.size(0)
+        eos = torch.zeros(size=[batch_size], dtype=torch.bool).cuda()
+        if use_kv_cache:
+            kv_cache = self.model.empty_kv_cache(batch_size)
+
+        for iteration in range(max_tokens):
+            if use_kv_cache:
+                if iteration == 0:
+                    logits, kv_cache = self.model(x, kv_cache=kv_cache)
+                else:
+                    logits, kv_cache = self.model(x[:, -1:], kv_cache=kv_cache)
+            else:
+                logits = self.model(x)
+            
+            logits = logits[:, -1]
             next_token = logits.argmax(1)
             next_token = torch.where(eos, self.eos_token, next_token)
             x = torch.cat([x[-self.model.context_length + 1:], next_token.unsqueeze(1)], dim=1)
             eos = torch.logical_or(eos, next_token == self.eos_token)
             if eos.all().item():
                 break
+
+        if use_kv_cache:
+            del kv_cache
 
         if num_outputs == 1:
             return self.tokenizer.decode(x[0].tolist())

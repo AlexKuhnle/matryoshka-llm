@@ -1,5 +1,5 @@
 import torch
-from typing import Callable, Optional, Sequence
+from typing import Callable, Optional, Sequence, Tuple
 
 from .mlp import MLP
 from .position import init_position_scheme
@@ -14,6 +14,7 @@ class GPT(torch.nn.Module):
         context_length: int,
         num_trafos: int,
         trafo_size: int,
+        embedding_norm: bool,
         position_scheme: str,
         position_per_layer: bool,
         normalization_module: Callable[[int], torch.nn.Module],
@@ -35,6 +36,11 @@ class GPT(torch.nn.Module):
         self.requires_mask_tensor = (not mhsa_torch_sdpa and not mhsa_flash_sdpa)
 
         self.embedding = torch.nn.Embedding(vocab_size, trafo_size)
+
+        if embedding_norm:
+            self.embedding_norm = normalization_module(trafo_size)
+        else:
+            self.embedding_norm = None
 
         self.fn_apply_pos, self.pos_embeddings = init_position_scheme(
             scheme=position_scheme,
@@ -70,26 +76,53 @@ class GPT(torch.nn.Module):
 
         self.prediction = torch.nn.Linear(trafo_size, vocab_size, bias=bias)
 
-    def forward(self, x):
-        batch_size, context_length = x.size()
-        assert context_length <= self.context_length
-        if self.requires_mask_tensor:
-            mask = torch.ones(context_length, context_length, dtype=torch.bool, device=x.device)
-            mask = mask.tril()
-            mask = torch.tile(mask, (batch_size, 1, 1))
+    def empty_kv_cache(self, batch_size):
+        return [(
+            torch.empty(size=(batch_size, trafo.mhsa.num_heads, 0, trafo.mhsa.qk_size)).cuda(),
+            torch.empty(size=(batch_size, trafo.mhsa.num_heads, 0, trafo.mhsa.head_size)).cuda(),
+        ) for trafo in self.trafos]
+        # return [(list(), list()) for _ in range(len(self.trafos))]
+
+    def forward(
+        self,
+        x,
+        kv_cache: Optional[Sequence[Tuple[torch.Tensor, torch.Tensor]]] = None,
+    ):
+        if self.requires_mask_tensor or kv_cache is not None:
+            q_length = kv_length = x.size(1)
+            if kv_cache is not None:
+                kv_length += kv_cache[0][0].size(2)
+                # kv_length = q_length + len(kv_cache[0][0])
+            mask = torch.ones(q_length, kv_length, dtype=torch.bool, device=x.device)
+            mask = mask.tril(diagonal=(kv_length - q_length))
+            mask = mask.expand((1, 1, *mask.size()))
         else:
             mask = True
 
         x = self.embedding(x)
+        if self.embedding_norm is not None:
+            x = self.embedding_norm(x)
         if not self.pos_per_layer:
             x = self.fn_apply_pos(x)
         if self.input_dropout is not None:
             x = self.input_dropout(x)
-        for trafo in self.trafos:
+
+        for n, trafo in enumerate(self.trafos):
+            kwargs = dict(mask=mask)
             if self.pos_per_layer:
-                x = trafo(x, mask=mask, fn_apply_pos=self.fn_apply_pos)
+                kwargs["fn_apply_pos"] = self.fn_apply_pos
+            if kv_cache is not None:
+                kwargs["kv_cache"] = kv_cache[n]
+
+            if kv_cache is None:
+                x = trafo(x, **kwargs)
             else:
-                x = trafo(x, mask=mask)
+                x, kv_cache[n] = trafo(x, **kwargs)
+
         x = self.final_norm(x)
         x = self.prediction(x)
-        return x
+
+        if kv_cache is None:
+            return x
+        else:
+            return x, kv_cache

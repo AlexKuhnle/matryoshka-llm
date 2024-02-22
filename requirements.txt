@@ -1,6 +1,7 @@
 datasets
 lightning
 numpy
+pyyaml
 tensorboard
 tokenizers
 torch
