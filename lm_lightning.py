@@ -42,7 +42,15 @@ class LMLightning(lightning.LightningModule):
         for module_name, module in self.model.named_modules():
             assign_log_function_to_module(module, f"gpt-{module_name}")
 
-    def forward(self, x="", num_outputs=1, max_tokens=100, use_kv_cache=True):
+    def forward(
+        self,
+        x="",
+        num_outputs=1,
+        max_tokens=100,
+        use_kv_cache=True,
+        speculative_model=None,
+        speculative_horizon=7,
+    ):
         if num_outputs > 1:
             assert isinstance(x, str)
             x = torch.as_tensor(
@@ -57,35 +65,105 @@ class LMLightning(lightning.LightningModule):
         else:
             raise NotImplementedError
 
-        batch_size = x.size(0)
-        eos = torch.zeros(size=[batch_size], dtype=torch.bool).cuda()
+        kv_cache = None
+        speculative_kv_cache = None
         if use_kv_cache:
-            kv_cache = self.model.empty_kv_cache(batch_size)
+            kv_cache = self.model.empty_kv_cache(x.size(0))
+            if speculative_model is not None:
+                speculative_kv_cache = speculative_model.empty_kv_cache(x.size(0))
 
-        for iteration in range(max_tokens):
-            if use_kv_cache:
-                if iteration == 0:
-                    logits, kv_cache = self.model(x, kv_cache=kv_cache)
-                else:
-                    logits, kv_cache = self.model(x[:, -1:], kv_cache=kv_cache)
-            else:
-                logits = self.model(x)
-            
-            logits = logits[:, -1]
-            next_token = logits.argmax(1)
-            next_token = torch.where(eos, self.eos_token, next_token)
-            x = torch.cat([x[-self.model.context_length + 1:], next_token.unsqueeze(1)], dim=1)
-            eos = torch.logical_or(eos, next_token == self.eos_token)
-            if eos.all().item():
-                break
+        if speculative_model is None:
+            x = LMLightning._forward_iterative(self.eos_token, self.model, x, max_tokens, kv_cache)
+        else:
+            x = LMLightning._forward_speculative(
+                self.eos_token, self.model, x, max_tokens, kv_cache,
+                speculative_model, speculative_horizon, speculative_kv_cache
+            )
 
-        if use_kv_cache:
-            del kv_cache
+        del kv_cache
+        del speculative_kv_cache
 
         if num_outputs == 1:
             return self.tokenizer.decode(x[0].tolist())
         else:
             return [self.tokenizer.decode(seq.tolist()) for seq in x]
+
+    @staticmethod
+    def _forward_iterative(eos_token, model, x, max_tokens, kv_cache):
+        eos = torch.zeros(size=[x.size(0), 1], dtype=torch.bool).cuda()
+
+        for _ in range(max_tokens):
+            if kv_cache is None or kv_cache[0][0].size(2) == 0:
+                logits = model(x[:, -model.context_length:], kv_cache=kv_cache)[:, -1:]
+            else:
+                logits = model(x[:, kv_cache[0][0].size(2):], kv_cache=kv_cache)[:, -1:]
+
+            next_token = logits.argmax(2)
+            next_token = torch.where(eos, eos_token, next_token)
+            x = torch.cat([x, next_token], dim=1)
+            eos = torch.logical_or(eos, next_token == eos_token)
+            if eos.all().item():
+                return x
+
+        return x
+
+    @staticmethod
+    def _forward_speculative(
+        eos_token, model, x, max_tokens, kv_cache,
+        speculative_model, speculative_horizon, speculative_kv_cache
+    ):
+        num_generated = 0
+        while num_generated < max_tokens:
+            num_tokens = x.size(1)
+            if num_generated > 0 and kv_cache is not None:
+                assert kv_cache[0][0].size(2) == num_tokens - 1
+                assert speculative_kv_cache[0][0].size(2) == num_tokens - 2
+            speculative = LMLightning._forward_iterative(
+                eos_token, speculative_model, x, speculative_horizon, speculative_kv_cache
+            )
+            assert speculative.size(1) - num_tokens <= speculative_horizon
+
+            if kv_cache is None or num_generated == 0:
+                logits = model(speculative[:, -model.context_length:], kv_cache=kv_cache)[:, num_tokens - 1:]
+            else:
+                logits = model(speculative[:, num_tokens - 1:], kv_cache=kv_cache)
+
+            next_tokens = logits.argmax(2)
+
+            mismatch_indices = (speculative[:, num_tokens:] != next_tokens[:, :-1]).any(0).nonzero()
+            any_mismatch = (mismatch_indices.numel() > 0)
+            if any_mismatch:
+                first_mismatch = mismatch_indices[0].item()
+                x = speculative[:, :num_tokens + first_mismatch]
+                if kv_cache is not None:
+                    remove_cache = speculative.size(1) - num_tokens - first_mismatch
+                    kv_cache = [
+                        (c1[:, :, :-remove_cache], c2[:, :, :-remove_cache])
+                        for c1, c2 in kv_cache
+                    ]
+                    speculative_kv_cache = [
+                        (c1[:, :, :-remove_cache], c2[:, :, :-remove_cache])
+                        for c1, c2 in speculative_kv_cache
+                    ]
+            else:
+                first_mismatch = speculative.size(1) - num_tokens
+                x = speculative
+
+            eos = (x[:, -1:] == eos_token)
+            if eos.all().item():
+                return x
+
+            next_token = next_tokens[:, first_mismatch: first_mismatch + 1]
+            assert next_token.numel() > 0
+            next_token = torch.where(eos, eos_token, next_token)
+            x = torch.cat([x, next_token], dim=1)
+            eos = torch.logical_or(eos, next_token == eos_token)
+            if eos.all().item():
+                return x
+
+            num_generated += first_mismatch + 1
+
+        return x
 
     def training_step(self, batch, batch_idx):
         x = batch["text"]

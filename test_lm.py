@@ -10,11 +10,7 @@ from modules.rms_norm import RMSNorm
 from lm_lightning import LMLightning
 
 
-if __name__ == "__main__":
-    dataset_name = sys.argv[1]
-    model_name = sys.argv[2]
-    suffix = sys.argv[3]
-
+def load_model(dataset_name, model_name, suffix):
     lightning_directory = f"lightning_logs_lm/{dataset_name}-{model_name}-{suffix}"
     tokenizer = tokenizers.Tokenizer.from_file(f"{lightning_directory}/tokenizer")
 
@@ -50,30 +46,62 @@ if __name__ == "__main__":
     model.cuda()
     model.eval()  # TODO: why not default?
 
+    return model
+
+
+if __name__ == "__main__":
+    dataset_name = sys.argv[1]
+    model_name = sys.argv[2]
+    suffix = sys.argv[3]
+
+    model = load_model(dataset_name, model_name, suffix)
+
+    if len(sys.argv) == 5:
+        speculative_suffix = sys.argv[4]
+        speculative_model = load_model(dataset_name, model_name, speculative_suffix)
+        speculative_model = speculative_model.model  # !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    else:
+        speculative_model = None
+
     with torch.inference_mode():
 
-        print(model("On a beautiful day", max_tokens=1000))
+        print(model("On a beautiful day", max_tokens=1000, speculative_model=speculative_model, speculative_horizon=8))
         print()
-        print(model(max_tokens=1000))
+        print(model(max_tokens=1000, speculative_model=speculative_model, speculative_horizon=8))
         print()
 
         target = model(max_tokens=1000)
         assert model(max_tokens=1000, use_kv_cache=False) == target
         assert all(output == target for output in model(num_outputs=5, max_tokens=1000))
+        assert model(max_tokens=1000, speculative_model=model.model, speculative_horizon=8) == target
+        assert model(max_tokens=1000, speculative_model=speculative_model, speculative_horizon=8) == target
+        assert model(max_tokens=1000, use_kv_cache=False, speculative_model=speculative_model, speculative_horizon=8) == target
 
         prompt = target[: len(target) // 2]
-        print("kv-cache  prompt  ")
-        # print("   -        -     ",
-        #     timeit.timeit((lambda: model(max_tokens=1000, use_kv_cache=False)), number=100)
-        # )
-        print("   x        -     ",
+        print("kv-cache  prompt  speculative  horizon  ")
+        print("   -        -          -          -     ",
+            timeit.timeit((lambda: model(max_tokens=1000, use_kv_cache=False)), number=100)
+        )
+        print("   x        -          -          -     ",
             timeit.timeit((lambda: model(max_tokens=1000, use_kv_cache=True)), number=100)
         )
-        # print("   -        x     ",
-        #     timeit.timeit((lambda: model(prompt, max_tokens=1000, use_kv_cache=False)), number=100)
-        # )
-        print("   x        x     ",
+        print("   -        x          -          -     ",
+            timeit.timeit((lambda: model(prompt, max_tokens=1000, use_kv_cache=False)), number=100)
+        )
+        print("   x        x          -          -     ",
             timeit.timeit((lambda: model(prompt, max_tokens=1000, use_kv_cache=True)), number=100)
+        )
+        print("   -        -          x          7     ",
+            timeit.timeit((lambda: model(max_tokens=1000, use_kv_cache=False, speculative_model=speculative_model, speculative_horizon=7)), number=100)
+        )
+        print("   x        -          x          7     ",
+            timeit.timeit((lambda: model(max_tokens=1000, use_kv_cache=True, speculative_model=speculative_model, speculative_horizon=7)), number=100)
+        )
+        print("   -        -          x          3     ",
+            timeit.timeit((lambda: model(max_tokens=1000, use_kv_cache=False, speculative_model=speculative_model, speculative_horizon=3)), number=100)
+        )
+        print("   -        -          x         15     ",
+            timeit.timeit((lambda: model(max_tokens=1000, use_kv_cache=False, speculative_model=speculative_model, speculative_horizon=15)), number=100)
         )
 
 

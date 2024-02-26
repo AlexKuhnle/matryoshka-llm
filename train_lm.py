@@ -76,7 +76,7 @@ if __name__ == "__main__":
             # weight_decay=0.1,
         ),
         trainer_kwargs=dict(
-            batch_size=16,
+            batch_size=48,
             gradient_clipping=1.0,  # 1.0
         )
     )

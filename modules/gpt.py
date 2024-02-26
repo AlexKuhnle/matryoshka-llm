@@ -1,5 +1,5 @@
 import torch
-from typing import Callable, Optional, Sequence, Tuple
+from typing import Callable, List, Optional, Sequence, Tuple
 
 from .mlp import MLP
 from .position import init_position_scheme
@@ -86,7 +86,7 @@ class GPT(torch.nn.Module):
     def forward(
         self,
         x,
-        kv_cache: Optional[Sequence[Tuple[torch.Tensor, torch.Tensor]]] = None,
+        kv_cache: Optional[List[Tuple[torch.Tensor, torch.Tensor]]] = None,
     ):
         if self.requires_mask_tensor or kv_cache is not None:
             q_length = kv_length = x.size(1)
@@ -122,7 +122,4 @@ class GPT(torch.nn.Module):
         x = self.final_norm(x)
         x = self.prediction(x)
 
-        if kv_cache is None:
-            return x
-        else:
-            return x, kv_cache
+        return x
