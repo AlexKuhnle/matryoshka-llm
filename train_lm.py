@@ -5,9 +5,10 @@ import sys
 import tokenizers
 import torch
 
+from callbacks import ParameterGradientLogger
+from lm_lightning import LMLightning
 from modules.gpt import GPT
 from modules.rms_norm import RMSNorm
-from lm_lightning import LMLightning
 
 
 if __name__ == "__main__":
@@ -65,7 +66,7 @@ if __name__ == "__main__":
             mlp_hidden_sizes=[512],  # * 4
             mlp_activation_module=torch.nn.SiLU,  # SiLU
             mlp_glu=True,  # True
-            bias=True,
+            bias=False,
             dropout=0.0,
         ),
         optimizer=torch.optim.Adam,
@@ -115,12 +116,25 @@ if __name__ == "__main__":
     logger = lightning.pytorch.loggers.TensorBoardLogger(
         "lightning_logs_lm", name=f"{dataset_name}-{model_name}-{suffix}",
     )
+
+    callbacks = list()
+    callbacks.append(ParameterGradientLogger(model))
+
+    # from lightning.pytorch.callbacks import DeviceStatsMonitor, StochasticWeightAveraging
+    # callbacks.append(DeviceStatsMonitor(cpu_stats=True))
+    # callbacks.append(StochasticWeightAveraging(
+    #     swa_lrs, swa_epoch_start=0.8, annealing_epochs=10, annealing_strategy='cos',
+    #     avg_fn=None, device=device(type='cpu')
+    # ))
+
     trainer = lightning.Trainer(
         logger=logger,
         max_epochs=int(num_epochs),
-        # limit_val_batches=0.1,  # (1.0 if DEBUG else 0.01),
-        val_check_interval=0.05,  # (1.0 if DEBUG else 0.01),
+        val_check_interval=0.05,
         gradient_clip_val=model.trainer_kwargs["gradient_clipping"],
+        log_every_n_steps=100,
+        callbacks=callbacks,
+        # accumulate_grad_batches=???,
     )
 
     trainer.fit(model, train_dataloader, test_dataloader)
