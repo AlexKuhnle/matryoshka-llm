@@ -175,10 +175,8 @@ class LMLightning(lightning.LightningModule):
                 x, batch_first=True, padding_value=self.pad_token,
             ).cuda()
 
-        x, target = (
-            x[:, :min(self.model.context_length, x.size(1) - 1)],
-            x[:, 1: self.model.context_length + 1],
-        )
+        target = x[:, 1: self.model.context_length + 1].clone()
+        x = x[:, :min(self.model.context_length, x.size(1) - 1)]
         x[x == self.pad_token] = self.eos_token
         logits = self.model(x)
         logits = logits.transpose(-2, -1)
@@ -196,10 +194,8 @@ class LMLightning(lightning.LightningModule):
                 x, batch_first=True, padding_value=self.pad_token,
             ).cuda()
 
-        x, target = (
-            x[:, :min(self.model.context_length, x.size(1) - 1)],
-            x[:, 1: self.model.context_length + 1],
-        )
+        target = x[:, 1: self.model.context_length + 1].clone()
+        x = x[:, :min(self.model.context_length, x.size(1) - 1)]
         x[x == self.pad_token] = self.eos_token
         logits = self.model(x)
         logits = logits.transpose(-2, -1)
