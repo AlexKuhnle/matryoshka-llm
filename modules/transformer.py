@@ -13,7 +13,7 @@ class Transformer(torch.nn.Module):
         normalization_module: Callable[[int], torch.nn.Module],
         mhsa_num_heads: int,
         mhsa_kv_groups: Optional[int],
-        mhsa_head_size: int,
+        mhsa_head_size: Optional[int],
         mhsa_qk_size: Optional[int],
         mhsa_torch_sdpa: bool,
         mhsa_flash_sdpa: bool,

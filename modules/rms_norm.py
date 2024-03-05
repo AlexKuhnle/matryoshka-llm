@@ -6,7 +6,7 @@ class RMSNorm(torch.nn.Module):
     def __init__(self, size: int, dim: int = -1):
         super().__init__()
 
-        self.scale = torch.nn.Parameter(torch.ones(1, 1, size))
+        self.scale = torch.nn.Parameter(torch.ones(size))
         self.dim = dim
 
     def forward(self, x):

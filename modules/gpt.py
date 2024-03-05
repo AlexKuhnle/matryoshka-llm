@@ -20,7 +20,7 @@ class GPT(torch.nn.Module):
         normalization_module: Callable[[int], torch.nn.Module],
         mhsa_num_heads: int,
         mhsa_kv_groups: Optional[int],
-        mhsa_head_size: int,
+        mhsa_head_size: Optional[int],
         mhsa_qk_size: Optional[int],
         mhsa_torch_sdpa: bool,
         mhsa_flash_sdpa: bool,
@@ -42,11 +42,15 @@ class GPT(torch.nn.Module):
         else:
             self.embedding_norm = None
 
-        self.fn_apply_pos, self.pos_embeddings = init_position_scheme(
+        self.fn_apply_pos, pos_embeddings = init_position_scheme(
             scheme=position_scheme,
             context_length=self.context_length,
             trafo_size=(mhsa_head_size if position_per_layer else trafo_size),
         )
+        if isinstance(pos_embeddings, torch.nn.Parameter):
+            self.pos_embeddings = pos_embeddings
+        elif pos_embeddings is not None:
+            self.register_buffer("pos_embeddings", pos_embeddings)
         self.pos_per_layer = position_per_layer
 
         if dropout > 0.0:
@@ -81,7 +85,6 @@ class GPT(torch.nn.Module):
             torch.empty(size=(batch_size, trafo.mhsa.num_heads, 0, trafo.mhsa.qk_size)).cuda(),
             torch.empty(size=(batch_size, trafo.mhsa.num_heads, 0, trafo.mhsa.head_size)).cuda(),
         ) for trafo in self.trafos]
-        # return [(list(), list()) for _ in range(len(self.trafos))]
 
     def forward(
         self,
@@ -95,7 +98,6 @@ class GPT(torch.nn.Module):
                 # kv_length = q_length + len(kv_cache[0][0])
             mask = torch.ones(q_length, kv_length, dtype=torch.bool, device=x.device)
             mask = mask.tril(diagonal=(kv_length - q_length))
-            mask = mask.expand((1, 1, *mask.size()))
         else:
             mask = True
 

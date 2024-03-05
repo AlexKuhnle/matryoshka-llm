@@ -12,7 +12,7 @@ class MHSA(torch.nn.Module):
         output_size: int,
         num_heads: int,
         kv_groups: Optional[int],
-        head_size: int,
+        head_size: Optional[int],
         qk_size: Optional[int],
         torch_sdpa: bool,
         flash_sdpa: bool,
@@ -25,7 +25,8 @@ class MHSA(torch.nn.Module):
         self.kv_groups = self.num_heads if kv_groups is None else kv_groups
         assert self.num_heads % self.kv_groups == 0
         self.kv_repeats = self.num_heads // self.kv_groups
-        self.head_size = head_size
+        assert head_size is not None or output_size % self.num_heads == 0
+        self.head_size = output_size // self.num_heads if head_size is None else head_size
         self.qk_size = self.head_size if qk_size is None else qk_size
         self.isqrt_qk_size = 1.0 / math.sqrt(self.qk_size)
 
@@ -126,6 +127,7 @@ class MHSA(torch.nn.Module):
 
         x = x.transpose(-3, -2).reshape(batch_size, q_length, self.num_heads * self.head_size)
         x = self.output_proj(x)
+
         if self.dropout is not None:
             x = self.dropout(x)
 

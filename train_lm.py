@@ -56,16 +56,16 @@ if __name__ == "__main__":
             embedding_norm=True,
             position_scheme="rope",
             position_per_layer=True,
-            normalization_module=RMSNorm,  # RMSNorm
+            normalization_module=RMSNorm,
             mhsa_num_heads=16,
             mhsa_kv_groups=None,
-            mhsa_head_size=32,
+            mhsa_head_size=None,
             mhsa_qk_size=None,
             mhsa_torch_sdpa=True,
             mhsa_flash_sdpa=False,
-            mlp_hidden_sizes=[512],  # * 4
-            mlp_activation_module=torch.nn.SiLU,  # SiLU
-            mlp_glu=True,  # True
+            mlp_hidden_sizes=[512],
+            mlp_activation_module=torch.nn.SiLU,
+            mlp_glu=True,
             bias=False,
             dropout=0.0,
         ),
@@ -77,8 +77,8 @@ if __name__ == "__main__":
             # weight_decay=0.1,
         ),
         trainer_kwargs=dict(
-            batch_size=48,
-            gradient_clipping=1.0,  # 1.0
+            batch_size=16,
+            gradient_clipping=1.0,
         )
     )
     model.cuda()
@@ -107,10 +107,10 @@ if __name__ == "__main__":
 
     batch_size = 8
     train_dataloader = torch.utils.data.DataLoader(
-        train_dataset, batch_size=model.trainer_kwargs["batch_size"],
+        train_dataset, batch_size=model.trainer_kwargs["batch_size"], num_workers=3,
     )
     test_dataloader = torch.utils.data.DataLoader(
-        test_dataset, batch_size=model.trainer_kwargs["batch_size"],
+        test_dataset, batch_size=model.trainer_kwargs["batch_size"], num_workers=2,
     )
 
     logger = lightning.pytorch.loggers.TensorBoardLogger(
