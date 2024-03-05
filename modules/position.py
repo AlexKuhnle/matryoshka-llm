@@ -1,7 +1,11 @@
 import torch
 
 
-def init_position_scheme(scheme, context_length, trafo_size):
+def init_position_scheme(scheme, context_length, trafo_size=None, trafo_sizes=None):
+    assert trafo_size is None or trafo_sizes is None
+    if trafo_sizes is not None:
+        assert all(trafo_sizes[n] < trafo_sizes[n + 1] for n in range(len(trafo_sizes) - 1))
+        trafo_size = trafo_sizes[-1]
 
     if scheme == "none":
         pos_embeddings = None
