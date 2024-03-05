@@ -139,5 +139,4 @@ cython_debug/
 
 
 /data
-/lightning_logs_lm
-/lightning_logs_vision
+/lightning_logs_*
