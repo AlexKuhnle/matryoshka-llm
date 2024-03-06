@@ -21,7 +21,6 @@ class MMHSA(torch.nn.Module):
         head_sizes: Optional[Sequence[int]],
         qk_sizes: Optional[Sequence[int]],
         torch_sdpa: bool,
-        flash_sdpa: bool,
         bias: bool,
         dropout: float,
     ):
@@ -29,7 +28,6 @@ class MMHSA(torch.nn.Module):
 
         self.input_sizes = list(input_sizes)
         self.output_sizes = list(output_sizes)
-        assert num_heads == 1
         self.num_heads = num_heads
         self.kv_groups = self.num_heads if kv_groups is None else kv_groups
         assert self.num_heads % self.kv_groups == 0
@@ -43,26 +41,94 @@ class MMHSA(torch.nn.Module):
         self.isqrt_qk_sizes = [1.0 / math.sqrt(qk_size) for qk_size in self.qk_sizes]
 
         self.query_proj = MLinear(
-            self.input_sizes, [self.num_heads * qk_size for qk_size in self.qk_sizes], bias=bias
+            self.input_sizes,
+            [self.num_heads * qk_size for qk_size in self.qk_sizes],
+            bias=bias,
         )
         self.key_proj = MLinear(
-            self.input_sizes, [self.kv_groups * qk_size for qk_size in self.qk_sizes], bias=bias
+            self.input_sizes,
+            [self.kv_groups * qk_size for qk_size in self.qk_sizes],
+            bias=bias,
         )
         self.value_proj = MLinear(
-            self.input_sizes, [self.kv_groups * head_size for head_size in self.head_sizes], bias=bias
+            self.input_sizes,
+            [self.kv_groups * head_size for head_size in self.head_sizes],
+            bias=bias,
         )
         self.output_proj = MLinear(
-            [self.num_heads * head_size for head_size in self.head_sizes], self.output_sizes, bias=bias
+            [self.num_heads * head_size for head_size in self.head_sizes],
+            self.output_sizes,
+            bias=bias,
         )
+
+        if self.num_heads > 1:
+            self.register_buffer(
+                "query_reorder",
+                MMHSA._compute_heads_reorder_indices(num_heads=self.num_heads, sizes=self.qk_sizes),
+            )
+            self.register_buffer(
+                "output_reorder",
+                MMHSA._compute_heads_reorder_indices(
+                    num_heads=self.num_heads, sizes=self.head_sizes, reverse=True,
+                ),
+            )
+        if self.kv_groups > 1:
+            self.register_buffer(
+                "key_reorder",
+                MMHSA._compute_heads_reorder_indices(num_heads=self.kv_groups, sizes=self.qk_sizes),
+            )
+            self.register_buffer(
+                "value_reorder",
+                MMHSA._compute_heads_reorder_indices(num_heads=self.kv_groups, sizes=self.head_sizes),
+            )
 
         if dropout > 0.0:
             self.dropout = torch.nn.Dropout(dropout)
         else:
             self.dropout = None
 
-        assert not torch_sdpa or not flash_sdpa
         self.torch_sdpa = torch_sdpa
-        self.flash_sdpa = flash_sdpa
+
+    @staticmethod
+    def _compute_heads_reorder_indices(num_heads, sizes, reverse=False):
+        heads_reorder = [list() for _ in range(num_heads)]
+        offset = 0
+        prev_size = 0
+        for size in sizes:
+            segment = size - prev_size
+            indices = torch.arange(0, segment)
+            for head in range(num_heads):
+                heads_reorder[head].append(offset + indices)
+                offset += segment
+            prev_size = size
+        assert offset == num_heads * sizes[-1]
+        reorder = torch.cat([x for head in heads_reorder for x in head])
+        if reverse:
+            reverse = torch.empty(num_heads * sizes[-1], dtype=int)
+            reverse[reorder.clone()] = torch.arange(num_heads * sizes[-1])
+            reorder = reverse
+        assert (reorder.sort()[0] == torch.arange(num_heads * sizes[-1])).all()
+        return reorder
+
+    @staticmethod
+    def _compute_heads_reverse_reorder_indices(num_heads, sizes):
+        heads_reorder = [list() for _ in range(num_heads)]
+        offset = 0
+        prev_size = 0
+        for size in sizes:
+            segment = size - prev_size
+            indices = torch.arange(0, segment)
+            for head in range(num_heads):
+                heads_reorder[head].append(offset + indices)
+                offset += segment
+            prev_size = size
+        assert offset == num_heads * sizes[-1]
+        reorder = torch.cat([x for head in heads_reorder for x in head])
+        if reverse:
+            reorder = torch.arange(num_heads * sizes[-1])[reorder]
+        assert (reorder.sort()[0] == torch.arange(num_heads * sizes[-1])).all()
+        print(reorder)
+        return reorder
 
     def init_nested_module(self, index, module):
         self.query_proj.init_nested_module(index, module.query_proj)
@@ -79,14 +145,21 @@ class MMHSA(torch.nn.Module):
     ):
         batch_size, q_length, _ = x.size()
 
-        query = self.query_proj(x) \
-            .reshape(batch_size, q_length, self.num_heads, self.qk_sizes[-1]) \
+        query = self.query_proj(x)
+        key = self.key_proj(x)
+        value = self.value_proj(x)
+
+        if self.num_heads > 1:
+            query = query[..., self.query_reorder]
+        if self.kv_groups > 1:
+            key = key[..., self.key_reorder]
+            value = value[..., self.value_reorder]
+
+        query = query.reshape(batch_size, q_length, self.num_heads, self.qk_sizes[-1]) \
             .transpose(-3, -2)
-        key = self.key_proj(x) \
-            .reshape(batch_size, q_length, self.kv_groups, self.qk_sizes[-1]) \
+        key = key.reshape(batch_size, q_length, self.kv_groups, self.qk_sizes[-1]) \
             .transpose(-3, -2)
-        value = self.value_proj(x) \
-            .reshape(batch_size, q_length, self.kv_groups, self.head_sizes[-1]) \
+        value = value.reshape(batch_size, q_length, self.kv_groups, self.head_sizes[-1]) \
             .transpose(-3, -2)
 
         if self.kv_repeats > 1:
@@ -125,8 +198,7 @@ class MMHSA(torch.nn.Module):
                 )[..., prev_head_size: head_size])
                 prev_head_size = head_size
             x = torch.cat(xs, dim=-1)
-        elif self.flash_sdpa:
-            raise NotImplementedError
+
         else:
             dp_blocks = list()
             prev_qk_size = 0
@@ -154,7 +226,12 @@ class MMHSA(torch.nn.Module):
                 prev_head_size = head_size
             x = torch.cat(xs, dim=-1)
 
-        x = x.transpose(-3, -2).reshape(batch_size, q_length, self.num_heads * self.head_sizes[-1])
+        x = x.transpose(-3, -2) \
+            .reshape(batch_size, q_length, self.num_heads * self.head_sizes[-1])
+
+        if self.num_heads > 1:
+            x = x[..., self.output_reorder]
+
         x = self.output_proj(x)
 
         if self.dropout is not None:

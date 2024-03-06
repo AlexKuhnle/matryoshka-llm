@@ -21,7 +21,6 @@ class MTransformer(torch.nn.Module):
         mhsa_head_sizes: Optional[Sequence[int]],
         mhsa_qk_sizes: Optional[Sequence[int]],
         mhsa_torch_sdpa: bool,
-        mhsa_flash_sdpa: bool,
         mlp_hidden_sizes: Sequence[Sequence[int]],
         mlp_activation_module: Callable[[], torch.nn.Module],
         mlp_glu: bool,
@@ -40,7 +39,6 @@ class MTransformer(torch.nn.Module):
             head_sizes=mhsa_head_sizes,
             qk_sizes=mhsa_qk_sizes,
             torch_sdpa=mhsa_torch_sdpa,
-            flash_sdpa=mhsa_flash_sdpa,
             bias=bias,
             dropout=dropout,
         )

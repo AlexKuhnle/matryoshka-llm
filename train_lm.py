@@ -62,7 +62,6 @@ if __name__ == "__main__":
             mhsa_head_size=None,
             mhsa_qk_size=None,
             mhsa_torch_sdpa=True,
-            mhsa_flash_sdpa=False,
             mlp_hidden_sizes=[512],
             mlp_activation_module=torch.nn.SiLU,
             mlp_glu=True,
@@ -77,9 +76,9 @@ if __name__ == "__main__":
             # weight_decay=0.1,
         ),
         trainer_kwargs=dict(
-            batch_size=16,
+            batch_size=4,
             gradient_clipping=1.0,
-            accumulate_grad_batches=1,
+            accumulate_grad_batches=4,
         )
     )
     model.cuda()
