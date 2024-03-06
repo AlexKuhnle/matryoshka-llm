@@ -126,13 +126,12 @@ class MLMLightning(lightning.LightningModule):
         x = x[:, :min(self.model.context_length, x.size(1) - 1)]
         x[x == self.pad_token] = self.eos_token
         losses = list()
-        for n, logits in enumerate(self.model(x)):
+        for index, logits in enumerate(self.model(x)):
             logits = logits.transpose(-2, -1)
             loss = self.loss(logits, target)
             losses.append(loss)
-            self.log(f"train_loss{n}", loss)
+            self.log(f"train_loss{self.model.trafo_sizes[index]}", loss)
         loss = torch.stack(losses).sum()
-        self.log(f"train_loss", loss)
         return loss
     
     def validation_step(self, batch, batch_idx):
@@ -150,18 +149,15 @@ class MLMLightning(lightning.LightningModule):
         x[x == self.pad_token] = self.eos_token
         losses = list()
         metrics = dict()
-        for n, logits in enumerate(self.model(x)):
+        for index, logits in enumerate(self.model(x)):
             logits = logits.transpose(-2, -1)
             loss = self.loss(logits, target)
             losses.append(loss)
-            self.log(f"test_loss{n}", loss, batch_size=x.size(0))
-            metrics[f"loss{n}"] = loss
+            self.log(f"test_loss{self.model.trafo_sizes[index]}", loss, batch_size=x.size(0))
+            metrics[f"loss{self.model.trafo_sizes[index]}"] = loss
             accuracy = (logits.argmax(1) == target).sum() / (target != self.pad_token).sum()
-            self.log(f"accuracy{n}", accuracy, batch_size=x.size(0))
-            metrics[f"accuracy{n}"] = accuracy
-        loss = torch.stack(losses).sum()
-        self.log("test_loss", loss, batch_size=x.size(0))
-        metrics["loss"] = loss
+            self.log(f"accuracy{self.model.trafo_sizes[index]}", accuracy, batch_size=x.size(0))
+            metrics[f"accuracy{self.model.trafo_sizes[index]}"] = accuracy
         return metrics
 
     def configure_optimizers(self):

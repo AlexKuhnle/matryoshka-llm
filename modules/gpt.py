@@ -23,7 +23,6 @@ class GPT(torch.nn.Module):
         mhsa_head_size: Optional[int],
         mhsa_qk_size: Optional[int],
         mhsa_torch_sdpa: bool,
-        mhsa_flash_sdpa: bool,
         mlp_hidden_sizes: Sequence[int],
         mlp_activation_module: Callable[[], torch.nn.Module],
         mlp_glu: bool,
@@ -33,7 +32,7 @@ class GPT(torch.nn.Module):
         super().__init__()
 
         self.context_length = context_length
-        self.requires_mask_tensor = (not mhsa_torch_sdpa and not mhsa_flash_sdpa)
+        self.requires_mask_tensor = (not mhsa_torch_sdpa)
         self.trafo_size = trafo_size
 
         self.embedding = torch.nn.Embedding(vocab_size, self.trafo_size)
@@ -57,7 +56,6 @@ class GPT(torch.nn.Module):
                 mhsa_head_size=mhsa_head_size,
                 mhsa_qk_size=mhsa_qk_size,
                 mhsa_torch_sdpa=mhsa_torch_sdpa,
-                mhsa_flash_sdpa=mhsa_flash_sdpa,
                 mlp_hidden_sizes=mlp_hidden_sizes,
                 mlp_activation_module=mlp_activation_module,
                 mlp_glu=mlp_glu,

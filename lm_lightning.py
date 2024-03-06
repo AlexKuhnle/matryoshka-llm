@@ -181,7 +181,7 @@ class LMLightning(lightning.LightningModule):
         logits = self.model(x)
         logits = logits.transpose(-2, -1)
         loss = self.loss(logits, target)
-        self.log("train_loss", loss)
+        self.log(f"train_loss{self.model.trafo_size}", loss)
         return loss
     
     def validation_step(self, batch, batch_idx):
@@ -200,10 +200,10 @@ class LMLightning(lightning.LightningModule):
         logits = self.model(x)
         logits = logits.transpose(-2, -1)
         loss = self.loss(logits, target)
-        self.log("test_loss", loss, batch_size=x.size(0))
+        self.log(f"test_loss{self.model.trafo_size}", loss, batch_size=x.size(0))
         accuracy = (logits.argmax(1) == target).sum() / (target != self.pad_token).sum()
-        self.log("accuracy", accuracy, batch_size=x.size(0))
-        return {"loss": loss, "accuracy": accuracy}
+        self.log(f"accuracy{self.model.trafo_size}", accuracy, batch_size=x.size(0))
+        return {f"loss{self.model.trafo_size}": loss, f"accuracy{self.model.trafo_size}": accuracy}
 
     def configure_optimizers(self):
         return self.optimizer_module(self.parameters(), **self.optimizer_kwargs)

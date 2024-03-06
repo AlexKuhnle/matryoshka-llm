@@ -28,7 +28,6 @@ class MGPT(torch.nn.Module):
         mhsa_head_sizes: Optional[Sequence[int]],
         mhsa_qk_sizes: Optional[Sequence[int]],
         mhsa_torch_sdpa: bool,
-        mhsa_flash_sdpa: bool,
         mlp_hidden_sizes: Sequence[Sequence[int]],
         mlp_activation_module: Callable[[], torch.nn.Module],
         mlp_glu: bool,
@@ -38,7 +37,7 @@ class MGPT(torch.nn.Module):
         super().__init__()
 
         self.context_length = context_length
-        self.requires_mask_tensor = (not mhsa_torch_sdpa and not mhsa_flash_sdpa)
+        self.requires_mask_tensor = (not mhsa_torch_sdpa)
         self.trafo_sizes = list(trafo_sizes)
 
         self.embedding = torch.nn.Embedding(vocab_size, self.trafo_sizes[-1])
@@ -62,7 +61,6 @@ class MGPT(torch.nn.Module):
                 mhsa_head_sizes=mhsa_head_sizes,
                 mhsa_qk_sizes=mhsa_qk_sizes,
                 mhsa_torch_sdpa=mhsa_torch_sdpa,
-                mhsa_flash_sdpa=mhsa_flash_sdpa,
                 mlp_hidden_sizes=mlp_hidden_sizes,
                 mlp_activation_module=mlp_activation_module,
                 mlp_glu=mlp_glu,
@@ -99,7 +97,6 @@ class MGPT(torch.nn.Module):
             mhsa_num_heads=self.trafos[0].mhsa.num_heads,
             mhsa_kv_groups=self.trafos[0].mhsa.kv_groups,
             mhsa_torch_sdpa=self.trafos[0].mhsa.torch_sdpa,
-            mhsa_flash_sdpa=self.trafos[0].mhsa.flash_sdpa,
             mlp_activation_module=self.trafos[0].mlp.activation_module,
             mlp_glu=self.trafos[0].mlp.is_glu,
             bias=(self.trafos[0].mhsa.query_proj.bias is not None),

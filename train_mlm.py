@@ -52,17 +52,17 @@ if __name__ == "__main__":
             vocab_size=tokenizer.get_vocab_size(),
             context_length=1024,
             num_trafos=8,
-            trafo_sizes=[64, 128, 256, 512],
-            embedding_norm=True,
-            position_scheme="learned-add",
-            position_per_layer=False,
+            trafo_sizes=[64, 128, 256, 512, 1024],
+            embedding_norm=False,
+            position_scheme="rope",
+            position_per_layer=True,
             normalization_module=MRMSNorm,
-            mhsa_num_heads=1,
+            mhsa_num_heads=8,
             mhsa_kv_groups=None,
             mhsa_head_sizes=None,
             mhsa_qk_sizes=None,
             mhsa_torch_sdpa=True,
-            mlp_hidden_sizes=[[64, 128, 256, 512]],
+            mlp_hidden_sizes=[[256, 512, 1024, 2048, 4096]],
             mlp_activation_module=torch.nn.SiLU,
             mlp_glu=True,
             bias=False,
@@ -78,6 +78,7 @@ if __name__ == "__main__":
         trainer_kwargs=dict(
             batch_size=8,
             gradient_clipping=1.0,
+            accumulate_grad_batches=1,
         )
     )
     model.cuda()
@@ -133,7 +134,7 @@ if __name__ == "__main__":
         gradient_clip_val=model.trainer_kwargs["gradient_clipping"],
         log_every_n_steps=100,
         callbacks=callbacks,
-        # accumulate_grad_batches=???,
+        accumulate_grad_batches=model.trainer_kwargs["accumulate_grad_batches"],
     )
 
     trainer.fit(model, train_dataloader, test_dataloader)
