@@ -48,18 +48,6 @@ class MGPT(torch.nn.Module):
         else:
             self.embedding_norm = None
 
-        self.position_scheme = position_scheme
-        self.fn_apply_pos, pos_embeddings = init_position_scheme(
-            scheme=self.position_scheme,
-            context_length=self.context_length,
-            trafo_sizes=(mhsa_head_sizes if position_per_layer else self.trafo_sizes),
-        )
-        if isinstance(pos_embeddings, torch.nn.Parameter):
-            self.pos_embeddings = pos_embeddings
-        elif pos_embeddings is not None:
-            self.register_buffer("pos_embeddings", pos_embeddings)
-        self.position_per_layer = position_per_layer
-
         if dropout > 0.0:
             self.input_dropout = torch.nn.Dropout(dropout)
         else:
@@ -82,6 +70,16 @@ class MGPT(torch.nn.Module):
                 dropout=dropout,
             ) for _ in range(num_trafos)
         ])
+
+        self.position_scheme = position_scheme
+        self.fn_apply_pos, pos_embeddings = init_position_scheme(
+            scheme=self.position_scheme,
+            context_length=self.context_length,
+            trafo_sizes=(self.trafos[0].mhsa.head_sizes if position_per_layer else self.trafo_sizes),
+        )
+        if isinstance(pos_embeddings, torch.nn.Parameter):
+            self.pos_embeddings = pos_embeddings
+        self.position_per_layer = position_per_layer
 
         self.final_norm = normalization_module(self.trafo_sizes)
 

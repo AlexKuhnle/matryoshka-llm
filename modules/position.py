@@ -35,7 +35,8 @@ def init_position_scheme(scheme, context_length, trafo_size=None, trafo_sizes=No
         freqs = 1.0 / (theta ** (torch.arange(0, trafo_size, 2)[: (trafo_size // 2)] / trafo_size))
         t = torch.arange(context_length)
         freqs = torch.outer(t, freqs)
-        pos_embeddings = torch.polar(torch.ones_like(freqs), freqs)
+        freqs_cis = torch.polar(torch.ones_like(freqs), freqs)
+        pos_embeddings = torch.nn.Parameter(freqs_cis, requires_grad=False)
 
         def fn_apply_pos(x, start=0):
             *shape, context, size = x.size()

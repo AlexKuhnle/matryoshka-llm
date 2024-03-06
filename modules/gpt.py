@@ -34,24 +34,14 @@ class GPT(torch.nn.Module):
 
         self.context_length = context_length
         self.requires_mask_tensor = (not mhsa_torch_sdpa and not mhsa_flash_sdpa)
+        self.trafo_size = trafo_size
 
-        self.embedding = torch.nn.Embedding(vocab_size, trafo_size)
+        self.embedding = torch.nn.Embedding(vocab_size, self.trafo_size)
 
         if embedding_norm:
-            self.embedding_norm = normalization_module(trafo_size)
+            self.embedding_norm = normalization_module(self.trafo_size)
         else:
             self.embedding_norm = None
-
-        self.fn_apply_pos, pos_embeddings = init_position_scheme(
-            scheme=position_scheme,
-            context_length=self.context_length,
-            trafo_size=(mhsa_head_size if position_per_layer else trafo_size),
-        )
-        if isinstance(pos_embeddings, torch.nn.Parameter):
-            self.pos_embeddings = pos_embeddings
-        elif pos_embeddings is not None:
-            self.register_buffer("pos_embeddings", pos_embeddings)
-        self.pos_per_layer = position_per_layer
 
         if dropout > 0.0:
             self.input_dropout = torch.nn.Dropout(dropout)
@@ -60,7 +50,7 @@ class GPT(torch.nn.Module):
 
         self.trafos = torch.nn.ModuleList([
             Transformer(
-                trafo_size,
+                self.trafo_size,
                 normalization_module=normalization_module,
                 mhsa_num_heads=mhsa_num_heads,
                 mhsa_kv_groups=mhsa_kv_groups,
@@ -76,9 +66,19 @@ class GPT(torch.nn.Module):
             ) for _ in range(num_trafos)
         ])
 
-        self.final_norm = normalization_module(trafo_size)
+        self.position_scheme = position_scheme
+        self.fn_apply_pos, pos_embeddings = init_position_scheme(
+            scheme=position_scheme,
+            context_length=self.context_length,
+            trafo_size=(self.trafos[0].mhsa.head_size if position_per_layer else self.trafo_size),
+        )
+        if isinstance(pos_embeddings, torch.nn.Parameter):
+            self.pos_embeddings = pos_embeddings
+        self.pos_per_layer = position_per_layer
 
-        self.prediction = torch.nn.Linear(trafo_size, vocab_size, bias=bias)
+        self.final_norm = normalization_module(self.trafo_size)
+
+        self.prediction = torch.nn.Linear(self.trafo_size, vocab_size, bias=bias)
 
     def empty_kv_cache(self, batch_size):
         return [(
