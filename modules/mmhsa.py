@@ -110,26 +110,6 @@ class MMHSA(torch.nn.Module):
         assert (reorder.sort()[0] == torch.arange(num_heads * sizes[-1])).all()
         return reorder
 
-    @staticmethod
-    def _compute_heads_reverse_reorder_indices(num_heads, sizes):
-        heads_reorder = [list() for _ in range(num_heads)]
-        offset = 0
-        prev_size = 0
-        for size in sizes:
-            segment = size - prev_size
-            indices = torch.arange(0, segment)
-            for head in range(num_heads):
-                heads_reorder[head].append(offset + indices)
-                offset += segment
-            prev_size = size
-        assert offset == num_heads * sizes[-1]
-        reorder = torch.cat([x for head in heads_reorder for x in head])
-        if reverse:
-            reorder = torch.arange(num_heads * sizes[-1])[reorder]
-        assert (reorder.sort()[0] == torch.arange(num_heads * sizes[-1])).all()
-        print(reorder)
-        return reorder
-
     def init_nested_module(self, index, module):
         self.query_proj.init_nested_module(index, module.query_proj)
         self.key_proj.init_nested_module(index, module.key_proj)

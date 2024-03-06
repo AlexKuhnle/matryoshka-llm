@@ -88,7 +88,7 @@ class MGPT(torch.nn.Module):
             for trafo_size in self.trafo_sizes
         ])
     
-    def get_nested_kwargs(self, index):
+    def get_nested_kwargs(self, index, force_non_matryoshka):
         kwargs = dict(
             vocab_size=self.embedding.num_embeddings,
             context_length=self.context_length,
@@ -105,7 +105,7 @@ class MGPT(torch.nn.Module):
             bias=(self.trafos[0].mhsa.query_proj.bias is not None),
             dropout=(0.0 if self.input_dropout is None else self.input_dropout.p),
         )
-        if index == 0:
+        if index == 0 or force_non_matryoshka:
             kwargs.update(
                 trafo_size=self.trafo_sizes[index],
                 normalization_module=self.final_norm.__class__.get_non_matryoshka_module(),
@@ -131,15 +131,16 @@ class MGPT(torch.nn.Module):
         for source, target in zip(self.trafos, module.trafos):
             source.init_nested_module(index, target)
         self.final_norm.init_nested_module(index, module.final_norm)
-        if index == 0:
-            module.prediction.weight.copy_(self.predictions[index].weight)
-            if self.predictions[index].bias is not None:
-                module.prediction.bias.copy_(self.predictions[index].bias)
-        else:
+        if hasattr(module, "predictions"):
+            assert not hasattr(module, "prediction")
             for target, source in zip(module.predictions, self.predictions):
                 target.weight.copy_(source.weight)
                 if source.bias is not None:
                     target.bias.copy_(source.bias)
+        else:
+            module.prediction.weight.copy_(self.predictions[index].weight)
+            if self.predictions[index].bias is not None:
+                module.prediction.bias.copy_(self.predictions[index].bias)
 
     def empty_kv_cache(self, batch_size):
         return [(

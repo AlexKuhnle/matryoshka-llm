@@ -34,11 +34,8 @@ class MLinear(torch.nn.Module):
     def init_nested_module(self, index, module):
         assert 0 <= index < len(self.input_sizes)
         if isinstance(module, torch.nn.Linear):
-            if index == 0:
-                module.weight.copy_(self.weight_blocks[0].transpose(0, 1))
-            else:
-                weight = self.weight()[:self.input_sizes[index], :self.output_sizes[index]]
-                module.weight.copy_(weight.transpose(0, 1))
+            weight = self.weight()[:self.input_sizes[index], :self.output_sizes[index]]
+            module.weight.copy_(weight.transpose(0, 1))
         else:
             for target, source in zip(module.weight_blocks, self.weight_blocks):
                 target.copy_(source)

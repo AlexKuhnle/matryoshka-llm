@@ -38,13 +38,13 @@ class MLMLightning(lightning.LightningModule):
         self.optimizer_kwargs = optimizer_kwargs
         self.trainer_kwargs = trainer_kwargs
 
-    def get_nested_model(self, index):
+    def get_nested_model(self, index, force_non_matryoshka=False):
         lightning_module = self.__class__
         model_module = self.model.__class__
-        if index == 0:
+        if index == 0 or force_non_matryoshka:
             lightning_module = lightning_module.get_non_matryoshka_module()
             model_module = model_module.get_non_matryoshka_module()
-        model_kwargs = self.model.get_nested_kwargs(index)
+        model_kwargs = self.model.get_nested_kwargs(index, force_non_matryoshka)
         nested_model = lightning_module(
             tokenizer=self.tokenizer,
             model=model_module,

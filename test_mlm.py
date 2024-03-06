@@ -58,9 +58,11 @@ if __name__ == "__main__":
 
     for index in range(4):
         nested_model = model.get_nested_model(index)
+        nested_model2 = model.get_nested_model(index, force_non_matryoshka=True)
         print(f"===== {index}: {nested_model.model.embedding.weight.size(1)} =====")
-        print(f"{nested_model.model.__class__.__name__}: {nested_model(max_tokens=200)}")
-        print(f"{model.model.__class__.__name__}: {model(index=index, max_tokens=200)}")
+        print(f"Matryoshka-LLM: {model(index=index, max_tokens=200)}")
+        print(f"Nested M-LLM:   {nested_model(max_tokens=200)}")
+        print(f"Nested as LLM:  {nested_model2(max_tokens=200)}")
     exit(0)
 
     # if len(sys.argv) == 5:
