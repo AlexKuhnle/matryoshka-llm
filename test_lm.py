@@ -65,43 +65,43 @@ if __name__ == "__main__":
 
     with torch.inference_mode():
 
-        print(model("On a beautiful day", max_tokens=1000, speculative_model=speculative_model, speculative_horizon=8))
+        print(model("On a beautiful day", max_tokens=1000, use_kv_cache=True, speculative_model=speculative_model, speculative_horizon=8))
         print()
-        print(model(max_tokens=1000, speculative_model=speculative_model, speculative_horizon=8))
+        print(model(max_tokens=1000, use_kv_cache=True, speculative_model=speculative_model, speculative_horizon=8))
         print()
 
         target = model(max_tokens=1000)
-        assert model(max_tokens=1000, use_kv_cache=False) == target
+        assert model(max_tokens=1000, use_kv_cache=True) == target
         assert all(output == target for output in model(num_outputs=5, max_tokens=1000))
         assert model(max_tokens=1000, speculative_model=model.model, speculative_horizon=8) == target
         assert model(max_tokens=1000, speculative_model=speculative_model, speculative_horizon=8) == target
-        assert model(max_tokens=1000, use_kv_cache=False, speculative_model=speculative_model, speculative_horizon=8) == target
+        assert model(max_tokens=1000, use_kv_cache=True, speculative_model=speculative_model, speculative_horizon=8) == target
 
         prompt = target[: len(target) // 2]
         print("kv-cache  prompt  speculative  horizon  ")
         print("   -        -          -          -     ",
-            timeit.timeit((lambda: model(max_tokens=1000, use_kv_cache=False)), number=100)
+            timeit.timeit((lambda: model(max_tokens=1000)), number=100)
         )
         print("   x        -          -          -     ",
             timeit.timeit((lambda: model(max_tokens=1000, use_kv_cache=True)), number=100)
         )
         print("   -        x          -          -     ",
-            timeit.timeit((lambda: model(prompt, max_tokens=1000, use_kv_cache=False)), number=100)
+            timeit.timeit((lambda: model(prompt, max_tokens=1000)), number=100)
         )
         print("   x        x          -          -     ",
             timeit.timeit((lambda: model(prompt, max_tokens=1000, use_kv_cache=True)), number=100)
         )
         print("   -        -          x          7     ",
-            timeit.timeit((lambda: model(max_tokens=1000, use_kv_cache=False, speculative_model=speculative_model, speculative_horizon=7)), number=100)
+            timeit.timeit((lambda: model(max_tokens=1000, speculative_model=speculative_model, speculative_horizon=7)), number=100)
         )
         print("   x        -          x          7     ",
             timeit.timeit((lambda: model(max_tokens=1000, use_kv_cache=True, speculative_model=speculative_model, speculative_horizon=7)), number=100)
         )
         print("   -        -          x          3     ",
-            timeit.timeit((lambda: model(max_tokens=1000, use_kv_cache=False, speculative_model=speculative_model, speculative_horizon=3)), number=100)
+            timeit.timeit((lambda: model(max_tokens=1000, speculative_model=speculative_model, speculative_horizon=3)), number=100)
         )
         print("   -        -          x         15     ",
-            timeit.timeit((lambda: model(max_tokens=1000, use_kv_cache=False, speculative_model=speculative_model, speculative_horizon=15)), number=100)
+            timeit.timeit((lambda: model(max_tokens=1000, speculative_model=speculative_model, speculative_horizon=15)), number=100)
         )
 
 

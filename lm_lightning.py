@@ -47,7 +47,7 @@ class LMLightning(lightning.LightningModule):
         x="",
         num_outputs=1,
         max_tokens=100,
-        use_kv_cache=True,
+        use_kv_cache=False,
         speculative_model=None,
         speculative_horizon=7,
     ):

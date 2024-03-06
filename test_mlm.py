@@ -43,7 +43,7 @@ def load_model(dataset_name, model_name, suffix):
         model=model_cls,
         model_kwargs=model_kwargs,
     )
-    # model.cuda()
+    model.cuda()
     model.eval()  # TODO: why not default?
 
     return model
@@ -55,6 +55,13 @@ if __name__ == "__main__":
     suffix = sys.argv[3]
 
     model = load_model(dataset_name, model_name, suffix)
+
+    for index in range(4):
+        nested_model = model.get_nested_model(index)
+        print(f"===== {index}: {nested_model.model.embedding.weight.size(1)} =====")
+        print(f"{nested_model.model.__class__.__name__}: {nested_model(max_tokens=200)}")
+        print(f"{model.model.__class__.__name__}: {model(index=index, max_tokens=200)}")
+    exit(0)
 
     # if len(sys.argv) == 5:
     #     speculative_suffix = sys.argv[4]

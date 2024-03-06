@@ -1,7 +1,6 @@
 import torch
 
 from modules.mrms_norm import MRMSNorm
-from modules.rms_norm import RMSNorm
 
 
 if __name__ == "__main__":
@@ -15,13 +14,13 @@ if __name__ == "__main__":
     print("Matryoshka checks:")
     with torch.no_grad():
         targets = list()
-        for n, size in enumerate(sizes):
-            if n == 0:
-                rms_norm = RMSNorm(size)
+        for index, size in enumerate(sizes):
+            if index == 0:
+                equivalent = MRMSNorm.get_non_matryoshka_module()(size)
             else:
-                rms_norm = MRMSNorm(sizes[:n + 1])
-            rms_norm.scale.copy_(mrms_norm.scale[:size])
-            targets.append(rms_norm(x[..., :size]))
+                equivalent = MRMSNorm(sizes[:index + 1])
+            mrms_norm.init_nested_module(index, equivalent)
+            targets.append(equivalent(x[..., :size]))
             for target in targets:
                 assert torch.allclose(y[..., :target.size(-1)], target)
             print(f"  {size}: check")

@@ -43,41 +43,25 @@ if __name__ == "__main__":
     print("Matryoshka checks:")
     with torch.no_grad():
         targets = list()
-        for n, (input_size, output_size, head_size, qk_size) in enumerate(zip(input_sizes, output_sizes, mmhsa.head_sizes, mmhsa.qk_sizes)):
-            if n == 0:
-                mhsa = MHSA(
+        for index, (input_size, output_size, head_size, qk_size) in enumerate(zip(input_sizes, output_sizes, mmhsa.head_sizes, mmhsa.qk_sizes)):
+            if index == 0:
+                equivalent = MMHSA.get_non_matryoshka_module()(
                     input_size, output_size,
                     num_heads=num_heads, kv_groups=kv_groups,
                     head_size=head_size, qk_size=qk_size,
                     torch_sdpa=torch_sdpa, flash_sdpa=flash_sdpa,
                     bias=bias, dropout=dropout,
                 )
-                mhsa.query_proj.weight.copy_(mmhsa.query_proj.weight[:input_size, :qk_size].transpose(0, 1))
-                mhsa.key_proj.weight.copy_(mmhsa.key_proj.weight[:input_size, :qk_size].transpose(0, 1))
-                mhsa.value_proj.weight.copy_(mmhsa.value_proj.weight[:input_size, :head_size].transpose(0, 1))
-                mhsa.output_proj.weight.copy_(mmhsa.output_proj.weight[:head_size, :output_size].transpose(0, 1))
             else:
-                mhsa = MMHSA(
-                    input_sizes[:n + 1], output_sizes[:n + 1],
+                equivalent = MMHSA(
+                    input_sizes[:index + 1], output_sizes[:index + 1],
                     num_heads=num_heads, kv_groups=kv_groups,
                     head_sizes=head_sizes, qk_sizes=qk_sizes,
                     torch_sdpa=torch_sdpa, flash_sdpa=flash_sdpa,
                     bias=bias, dropout=dropout,
                 )
-                for block1, block2 in zip(mhsa.query_proj.weight_blocks, mmhsa.query_proj.weight_blocks):
-                    block1.copy_(block2)
-                for block1, block2 in zip(mhsa.key_proj.weight_blocks, mmhsa.key_proj.weight_blocks):
-                    block1.copy_(block2)
-                for block1, block2 in zip(mhsa.value_proj.weight_blocks, mmhsa.value_proj.weight_blocks):
-                    block1.copy_(block2)
-                for block1, block2 in zip(mhsa.output_proj.weight_blocks, mmhsa.output_proj.weight_blocks):
-                    block1.copy_(block2)
-            if bias:
-                mhsa.query_proj.bias.copy_(mmhsa.query_proj.bias[:qk_size])
-                mhsa.key_proj.bias.copy_(mmhsa.key_proj.bias[:qk_size])
-                mhsa.value_proj.bias.copy_(mmhsa.value_proj.bias[:head_size])
-                mhsa.output_proj.bias.copy_(mmhsa.output_proj.bias[:output_size])
-            targets.append(mhsa(x[..., :input_size], mask=mask, fn_apply_pos=fn_apply_pos))
+            mmhsa.init_nested_module(index, equivalent)
+            targets.append(equivalent(x[..., :input_size], mask=mask, fn_apply_pos=fn_apply_pos))
             for target in targets:
                 assert torch.allclose(y[..., :target.size(-1)], target)
             print(f"  {input_size}/{output_size}: check")

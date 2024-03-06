@@ -1,12 +1,17 @@
 import torch
 from typing import Callable, List, Optional, Sequence, Tuple
 
+from .gpt import GPT
 from .mmlp import MMLP
 from .mtransformer import MTransformer
 from .position import init_position_scheme
 
 
 class MGPT(torch.nn.Module):
+
+    @classmethod
+    def get_non_matryoshka_module(cls):
+        return GPT
 
     def __init__(
         self,
@@ -34,25 +39,26 @@ class MGPT(torch.nn.Module):
 
         self.context_length = context_length
         self.requires_mask_tensor = (not mhsa_torch_sdpa and not mhsa_flash_sdpa)
-        self.trafo_sizes = trafo_sizes
+        self.trafo_sizes = list(trafo_sizes)
 
-        self.embedding = torch.nn.Embedding(vocab_size, trafo_sizes[-1])
+        self.embedding = torch.nn.Embedding(vocab_size, self.trafo_sizes[-1])
 
         if embedding_norm:
-            self.embedding_norm = normalization_module(trafo_sizes)
+            self.embedding_norm = normalization_module(self.trafo_sizes)
         else:
             self.embedding_norm = None
 
+        self.position_scheme = position_scheme
         self.fn_apply_pos, pos_embeddings = init_position_scheme(
-            scheme=position_scheme,
+            scheme=self.position_scheme,
             context_length=self.context_length,
-            trafo_sizes=(mhsa_head_sizes if position_per_layer else trafo_sizes),
+            trafo_sizes=(mhsa_head_sizes if position_per_layer else self.trafo_sizes),
         )
         if isinstance(pos_embeddings, torch.nn.Parameter):
             self.pos_embeddings = pos_embeddings
         elif pos_embeddings is not None:
             self.register_buffer("pos_embeddings", pos_embeddings)
-        self.pos_per_layer = position_per_layer
+        self.position_per_layer = position_per_layer
 
         if dropout > 0.0:
             self.input_dropout = torch.nn.Dropout(dropout)
@@ -61,7 +67,7 @@ class MGPT(torch.nn.Module):
 
         self.trafos = torch.nn.ModuleList([
             MTransformer(
-                trafo_sizes,
+                self.trafo_sizes,
                 normalization_module=normalization_module,
                 mhsa_num_heads=mhsa_num_heads,
                 mhsa_kv_groups=mhsa_kv_groups,
@@ -77,12 +83,65 @@ class MGPT(torch.nn.Module):
             ) for _ in range(num_trafos)
         ])
 
-        self.final_norm = normalization_module(trafo_sizes)
+        self.final_norm = normalization_module(self.trafo_sizes)
 
         self.predictions = torch.nn.ModuleList([
             torch.nn.Linear(trafo_size, vocab_size, bias=bias)
-            for trafo_size in trafo_sizes
+            for trafo_size in self.trafo_sizes
         ])
+    
+    def get_nested_kwargs(self, index):
+        kwargs = dict(
+            vocab_size=self.embedding.num_embeddings,
+            context_length=self.context_length,
+            num_trafos=len(self.trafos),
+            embedding_norm=(self.embedding_norm is not None),
+            position_scheme=self.position_scheme,
+            position_per_layer=self.position_per_layer,
+            mhsa_num_heads=self.trafos[0].mhsa.num_heads,
+            mhsa_kv_groups=self.trafos[0].mhsa.kv_groups,
+            mhsa_torch_sdpa=self.trafos[0].mhsa.torch_sdpa,
+            mhsa_flash_sdpa=self.trafos[0].mhsa.flash_sdpa,
+            mlp_activation_module=self.trafos[0].mlp.activation_module,
+            mlp_glu=self.trafos[0].mlp.is_glu,
+            bias=(self.trafos[0].mhsa.query_proj.bias is not None),
+            dropout=(0.0 if self.input_dropout is None else self.input_dropout.p),
+        )
+        if index == 0:
+            kwargs.update(
+                trafo_size=self.trafo_sizes[index],
+                normalization_module=self.final_norm.__class__.get_non_matryoshka_module(),
+                mhsa_head_size=self.trafos[0].mhsa.head_sizes[index],
+                mhsa_qk_size=self.trafos[0].mhsa.qk_sizes[index],
+                mlp_hidden_sizes=[sizes[index] for sizes in self.trafos[0].mlp.hidden_sizes],
+            )
+        else:
+            kwargs.update(
+                trafo_sizes=self.trafo_sizes[:index + 1],
+                normalization_module=self.final_norm.__class__,
+                mhsa_head_sizes=self.trafos[0].mhsa.head_sizes[:index + 1],
+                mhsa_qk_sizes=self.trafos[0].mhsa.qk_sizes[:index + 1],
+                mlp_hidden_sizes=[sizes[:index + 1] for sizes in self.trafos[0].mlp.hidden_sizes],
+            )
+        return kwargs
+
+    def init_nested_module(self, index, module):
+        module.embedding.weight.copy_(self.embedding.weight[:, :self.trafo_sizes[index]])
+        if self.embedding_norm is not None:
+            self.embedding_norm.init_nested_module(index, module.embedding_norm)
+        module.pos_embeddings.copy_(self.pos_embeddings[:, :self.trafo_sizes[index]])
+        for source, target in zip(self.trafos, module.trafos):
+            source.init_nested_module(index, target)
+        self.final_norm.init_nested_module(index, module.final_norm)
+        if index == 0:
+            module.prediction.weight.copy_(self.predictions[index].weight)
+            if self.predictions[index].bias is not None:
+                module.prediction.bias.copy_(self.predictions[index].bias)
+        else:
+            for target, source in zip(module.predictions, self.predictions):
+                target.weight.copy_(source.weight)
+                if source.bias is not None:
+                    target.bias.copy_(source.bias)
 
     def empty_kv_cache(self, batch_size):
         return [(
@@ -108,14 +167,14 @@ class MGPT(torch.nn.Module):
         x = self.embedding(x)
         if self.embedding_norm is not None:
             x = self.embedding_norm(x)
-        if not self.pos_per_layer:
+        if not self.position_per_layer:
             x = self.fn_apply_pos(x)
         if self.input_dropout is not None:
             x = self.input_dropout(x)
 
         for n, trafo in enumerate(self.trafos):
             kwargs = dict(mask=mask)
-            if self.pos_per_layer:
+            if self.position_per_layer:
                 kwargs["fn_apply_pos"] = self.fn_apply_pos
             if kv_cache is not None:
                 kwargs["kv_cache"] = kv_cache[n]

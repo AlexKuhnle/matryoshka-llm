@@ -17,16 +17,21 @@ class MLP(torch.nn.Sequential):
         dropout: float,
         final_dropout: bool,
     ):
-        if glu:
-            if len(hidden_sizes) == 1:
-                hidden_sizes = [int(hidden_sizes[0] * 2 / 3)]
+        self.hidden_sizes = list(hidden_sizes)
+        self.activation_module = activation_module
+        self.is_glu = glu
+
+        actual_hidden_sizes = self.hidden_sizes
+        if self.is_glu:
+            if len(self.hidden_sizes) == 1:
+                actual_hidden_sizes = [int(self.hidden_sizes[0] * 2 / 3)]
             else:
                 raise NotImplementedError
 
         layers = list()
         prev_size = input_size
-        for hidden_size in hidden_sizes:
-            if glu:
+        for hidden_size in actual_hidden_sizes:
+            if self.is_glu:
                 layers.append(GLU(
                     prev_size,
                     hidden_size,

@@ -3,9 +3,14 @@ from typing import Callable, Optional, Sequence, Tuple, Union
 
 from .mmhsa import MMHSA
 from .mmlp import MMLP
+from .transformer import Transformer
 
 
 class MTransformer(torch.nn.Module):
+
+    @classmethod
+    def get_non_matryoshka_module(cls):
+        return Transformer
 
     def __init__(
         self,
@@ -51,6 +56,12 @@ class MTransformer(torch.nn.Module):
             dropout=dropout,
             final_dropout=True,
         )
+
+    def init_nested_module(self, index, module):
+        self.mhsa_norm.init_nested_module(index, module.mhsa_norm)
+        self.mhsa.init_nested_module(index, module.mhsa)
+        self.mlp_norm.init_nested_module(index, module.mlp_norm)
+        self.mlp.init_nested_module(index, module.mlp)
 
     def forward(
         self,

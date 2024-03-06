@@ -1,12 +1,16 @@
-import flash_attn
 import math
 import torch
 from typing import Callable, Optional, Sequence, Tuple, Union
 
+from .mhsa import MHSA
 from .mlinear import MLinear
 
 
 class MMHSA(torch.nn.Module):
+
+    @classmethod
+    def get_non_matryoshka_module(cls):
+        return MHSA
 
     def __init__(
         self,
@@ -23,23 +27,33 @@ class MMHSA(torch.nn.Module):
     ):
         super().__init__()
 
+        self.input_sizes = list(input_sizes)
+        self.output_sizes = list(output_sizes)
         assert num_heads == 1
         self.num_heads = num_heads
         self.kv_groups = self.num_heads if kv_groups is None else kv_groups
         assert self.num_heads % self.kv_groups == 0
         self.kv_repeats = self.num_heads // self.kv_groups
         if head_sizes is None:
-            self.head_sizes = [output_size // self.num_heads for output_size in output_sizes] 
+            self.head_sizes = [output_size // self.num_heads for output_size in self.output_sizes] 
         else:
-            assert all(output_size % self.num_heads == 0 for output_size in output_sizes)
-            self.head_sizes = head_sizes
-        self.qk_sizes = self.head_sizes if qk_sizes is None else qk_sizes
+            assert all(output_size % self.num_heads == 0 for output_size in self.output_sizes)
+            self.head_sizes = list(head_sizes)
+        self.qk_sizes = self.head_sizes if qk_sizes is None else list(qk_sizes)
         self.isqrt_qk_sizes = [1.0 / math.sqrt(qk_size) for qk_size in self.qk_sizes]
 
-        self.query_proj = MLinear(input_sizes, [self.num_heads * qk_size for qk_size in self.qk_sizes], bias=bias)
-        self.key_proj = MLinear(input_sizes, [self.kv_groups * qk_size for qk_size in self.qk_sizes], bias=bias)
-        self.value_proj = MLinear(input_sizes, [self.kv_groups * head_size for head_size in self.head_sizes], bias=bias)
-        self.output_proj = MLinear([self.num_heads * head_size for head_size in self.head_sizes], output_sizes, bias=bias)
+        self.query_proj = MLinear(
+            self.input_sizes, [self.num_heads * qk_size for qk_size in self.qk_sizes], bias=bias
+        )
+        self.key_proj = MLinear(
+            self.input_sizes, [self.kv_groups * qk_size for qk_size in self.qk_sizes], bias=bias
+        )
+        self.value_proj = MLinear(
+            self.input_sizes, [self.kv_groups * head_size for head_size in self.head_sizes], bias=bias
+        )
+        self.output_proj = MLinear(
+            [self.num_heads * head_size for head_size in self.head_sizes], self.output_sizes, bias=bias
+        )
 
         if dropout > 0.0:
             self.dropout = torch.nn.Dropout(dropout)
@@ -49,6 +63,12 @@ class MMHSA(torch.nn.Module):
         assert not torch_sdpa or not flash_sdpa
         self.torch_sdpa = torch_sdpa
         self.flash_sdpa = flash_sdpa
+
+    def init_nested_module(self, index, module):
+        self.query_proj.init_nested_module(index, module.query_proj)
+        self.key_proj.init_nested_module(index, module.key_proj)
+        self.value_proj.init_nested_module(index, module.value_proj)
+        self.output_proj.init_nested_module(index, module.output_proj)
 
     def forward(
         self,

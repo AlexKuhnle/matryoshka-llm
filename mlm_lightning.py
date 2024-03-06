@@ -3,8 +3,14 @@ import tokenizers
 import torch
 from typing import Callable, Optional
 
+from lm_lightning import LMLightning
+
 
 class MLMLightning(lightning.LightningModule):
+
+    @classmethod
+    def get_non_matryoshka_module(cls):
+        return LMLightning
 
     def __init__(
         self,
@@ -31,6 +37,80 @@ class MLMLightning(lightning.LightningModule):
         self.optimizer_module = optimizer
         self.optimizer_kwargs = optimizer_kwargs
         self.trainer_kwargs = trainer_kwargs
+
+    def get_nested_model(self, index):
+        lightning_module = self.__class__
+        model_module = self.model.__class__
+        if index == 0:
+            lightning_module = lightning_module.get_non_matryoshka_module()
+            model_module = model_module.get_non_matryoshka_module()
+        model_kwargs = self.model.get_nested_kwargs(index)
+        nested_model = lightning_module(
+            tokenizer=self.tokenizer,
+            model=model_module,
+            model_kwargs=model_kwargs,
+            optimizer=self.optimizer_module,
+            optimizer_kwargs=self.optimizer_kwargs,
+            trainer_kwargs=self.trainer_kwargs,
+        )
+        nested_model.to(self.device)
+        with torch.no_grad():
+            self.model.init_nested_module(index, nested_model.model)
+        return nested_model
+
+    def forward(
+        self,
+        x="",
+        num_outputs=1,
+        index=-1,
+        max_tokens=100,
+        use_kv_cache=False,
+    ):
+        if num_outputs > 1:
+            assert isinstance(x, str)
+            x = torch.as_tensor(
+                [self.tokenizer.encode(x).ids[-self.model.context_length - 1: -1]],
+                dtype=torch.int64,
+            ).repeat(num_outputs, 1).cuda()
+        elif isinstance(x, str):
+            x = torch.as_tensor(
+                [self.tokenizer.encode(x).ids[-self.model.context_length - 1: -1]],
+                dtype=torch.int64,
+            ).cuda()
+        else:
+            raise NotImplementedError
+
+        kv_cache = None
+        if use_kv_cache:
+            kv_cache = self.model.empty_kv_cache(x.size(0))
+
+        x = MLMLightning._forward_iterative(self.eos_token, self.model, x, index, max_tokens, kv_cache)
+
+        del kv_cache
+
+        if num_outputs == 1:
+            return self.tokenizer.decode(x[0].tolist())
+        else:
+            return [self.tokenizer.decode(seq.tolist()) for seq in x]
+
+    @staticmethod
+    def _forward_iterative(eos_token, model, x, index, max_tokens, kv_cache):
+        eos = torch.zeros(size=[x.size(0), 1], dtype=torch.bool).cuda()
+
+        for _ in range(max_tokens):
+            if kv_cache is None or kv_cache[0][0].size(2) == 0:
+                logits = model(x[:, -model.context_length:], kv_cache=kv_cache)[index][:, -1:]
+            else:
+                logits = model(x[:, kv_cache[0][0].size(2):], kv_cache=kv_cache)[index][:, -1:]
+
+            next_token = logits.argmax(2)
+            next_token = torch.where(eos, eos_token, next_token)
+            x = torch.cat([x, next_token], dim=1)
+            eos = torch.logical_or(eos, next_token == eos_token)
+            if eos.all().item():
+                return x
+
+        return x
 
     def training_step(self, batch, batch_idx):
         x = batch["text"]
