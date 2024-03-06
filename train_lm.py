@@ -79,6 +79,7 @@ if __name__ == "__main__":
         trainer_kwargs=dict(
             batch_size=16,
             gradient_clipping=1.0,
+            accumulate_grad_batches=1,
         )
     )
     model.cuda()
@@ -105,7 +106,6 @@ if __name__ == "__main__":
     print(f"test:  {len(test_dataset)}")
     print(f"vocab: {tokenizer.get_vocab_size()}")
 
-    batch_size = 8
     train_dataloader = torch.utils.data.DataLoader(
         train_dataset, batch_size=model.trainer_kwargs["batch_size"], num_workers=3,
     )
@@ -134,7 +134,7 @@ if __name__ == "__main__":
         gradient_clip_val=model.trainer_kwargs["gradient_clipping"],
         log_every_n_steps=100,
         callbacks=callbacks,
-        # accumulate_grad_batches=???,
+        accumulate_grad_batches=model.trainer_kwargs["accumulate_grad_batches"],
     )
 
     trainer.fit(model, train_dataloader, test_dataloader)

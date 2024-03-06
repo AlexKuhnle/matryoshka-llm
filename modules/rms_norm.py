@@ -3,10 +3,10 @@ import torch
 
 class RMSNorm(torch.nn.Module):
 
-    def __init__(self, size: int, dim: int = -1):
+    def __init__(self, size: int, dim: int = -1, init_value: float = 1.0):
         super().__init__()
 
-        self.scale = torch.nn.Parameter(torch.ones(size))
+        self.scale = torch.nn.Parameter(torch.full(size=(size,), fill_value=init_value))
         self.dim = dim
 
     def forward(self, x):

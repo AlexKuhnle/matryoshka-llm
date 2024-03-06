@@ -121,8 +121,11 @@ class MHSA(torch.nn.Module):
             if mask is not None:
                 assert not isinstance(mask, bool)
                 attention_logits += torch.where(mask, 0.0, float("-inf"))
+                # attention_logits = torch.where(mask, attention_logits, 0.0)
 
             attention = torch.nn.functional.softmax(attention_logits, dim=-1)
+            # attention = torch.nn.functional.layer_norm(attention_logits, (attention_logits.size(-1),))
+
             x = attention @ value
 
         x = x.transpose(-3, -2).reshape(batch_size, q_length, self.num_heads * self.head_size)
