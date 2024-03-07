@@ -82,7 +82,7 @@ class MGPTAblation(torch.nn.Module):
             for n in range(len(prediction_sizes) - 1)
         )
         assert prediction_sizes[-1] == trafo_size
-        self.prediction_sizes = list(self.prediction_sizes)
+        self.prediction_sizes = list(prediction_sizes)
         self.prediction_multihead = prediction_multihead
         if self.prediction_multihead:
             self.predictions = torch.nn.ModuleList([
