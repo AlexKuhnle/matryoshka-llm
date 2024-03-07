@@ -52,7 +52,7 @@ if __name__ == "__main__":
             vocab_size=tokenizer.get_vocab_size(),
             context_length=1024,
             num_trafos=8,
-            trafo_sizes=[64, 128, 256, 512, 1024],
+            trafo_sizes=[32, 64, 128, 256, 512],
             embedding_norm=False,
             position_scheme="rope",
             position_per_layer=True,
@@ -62,7 +62,7 @@ if __name__ == "__main__":
             mhsa_head_sizes=None,
             mhsa_qk_sizes=None,
             mhsa_torch_sdpa=True,
-            mlp_hidden_sizes=[[256, 512, 1024, 2048, 4096]],
+            mlp_hidden_sizes=[[32, 64, 128, 256, 512]],
             mlp_activation_module=torch.nn.SiLU,
             mlp_glu=True,
             bias=False,
@@ -76,7 +76,7 @@ if __name__ == "__main__":
             # weight_decay=0.1,
         ),
         trainer_kwargs=dict(
-            batch_size=8,
+            batch_size=16,
             gradient_clipping=1.0,
             accumulate_grad_batches=1,
         )

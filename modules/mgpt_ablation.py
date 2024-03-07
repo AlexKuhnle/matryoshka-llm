@@ -12,7 +12,6 @@ class MGPTAblation(torch.nn.Module):
         vocab_size: int,
         context_length: int,
         prediction_sizes: Sequence[int],
-        prediction_multihead: bool,
         num_trafos: int,
         trafo_size: int,
         embedding_norm: bool,
@@ -83,14 +82,10 @@ class MGPTAblation(torch.nn.Module):
         )
         assert prediction_sizes[-1] == trafo_size
         self.prediction_sizes = list(prediction_sizes)
-        self.prediction_multihead = prediction_multihead
-        if self.prediction_multihead:
-            self.predictions = torch.nn.ModuleList([
-                torch.nn.Linear(pred_size, vocab_size, bias=bias)
-                for pred_size in self.prediction_sizes
-            ])
-        else:
-            self.prediction = torch.nn.Linear(self.trafo_size, vocab_size, bias=bias)
+        self.predictions = torch.nn.ModuleList([
+            torch.nn.Linear(pred_size, vocab_size, bias=bias)
+            for pred_size in self.prediction_sizes
+        ])
 
     def forward(
         self,
@@ -119,13 +114,9 @@ class MGPTAblation(torch.nn.Module):
             x = trafo(x, **kwargs)
 
         x = self.final_norm(x)
-        if self.prediction_multihead:
-            x = [
-                prediction(x[..., :pred_size])
-                for prediction, pred_size in zip(self.predictions, self.prediction_sizes)
-            ]
-        else:
-            x = self.prediction(x)
-            x = [x[..., :pred_size] for pred_size in self.prediction_sizes]
+        x = [
+            prediction(x[..., :pred_size])
+            for prediction, pred_size in zip(self.predictions, self.prediction_sizes)
+        ]
 
         return x
