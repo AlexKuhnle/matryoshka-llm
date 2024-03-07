@@ -38,6 +38,9 @@ class MLMLightning(lightning.LightningModule):
         self.optimizer_kwargs = optimizer_kwargs
         self.trainer_kwargs = trainer_kwargs
 
+    def configure_optimizers(self):
+        return self.optimizer_module(self.parameters(), **self.optimizer_kwargs)
+
     def get_nested_model(self, index, force_non_matryoshka=False):
         lightning_module = self.__class__
         model_module = self.model.__class__
@@ -130,7 +133,7 @@ class MLMLightning(lightning.LightningModule):
             logits = logits.transpose(-2, -1)
             loss = self.loss(logits, target)
             losses.append(loss)
-            self.log(f"train_loss{self.model.trafo_sizes[index]}", loss)
+            self.log(f"train_loss{self.model.prediction_sizes[index]}", loss)
         loss = torch.stack(losses).sum()
         return loss
     
@@ -147,18 +150,32 @@ class MLMLightning(lightning.LightningModule):
         target = x[:, 1: self.model.context_length + 1].clone()
         x = x[:, :min(self.model.context_length, x.size(1) - 1)]
         x[x == self.pad_token] = self.eos_token
-        losses = list()
         metrics = dict()
         for index, logits in enumerate(self.model(x)):
             logits = logits.transpose(-2, -1)
             loss = self.loss(logits, target)
-            losses.append(loss)
-            self.log(f"test_loss{self.model.trafo_sizes[index]}", loss, batch_size=x.size(0))
-            metrics[f"loss{self.model.trafo_sizes[index]}"] = loss
+            self.log(f"test_loss{self.model.prediction_sizes[index]}", loss, batch_size=x.size(0))
+            metrics[f"loss{self.model.prediction_sizes[index]}"] = loss
             accuracy = (logits.argmax(1) == target).sum() / (target != self.pad_token).sum()
-            self.log(f"accuracy{self.model.trafo_sizes[index]}", accuracy, batch_size=x.size(0))
-            metrics[f"accuracy{self.model.trafo_sizes[index]}"] = accuracy
+            self.log(f"accuracy{self.model.prediction_sizes[index]}", accuracy, batch_size=x.size(0))
+            metrics[f"accuracy{self.model.prediction_sizes[index]}"] = accuracy
         return metrics
 
-    def configure_optimizers(self):
-        return self.optimizer_module(self.parameters(), **self.optimizer_kwargs)
+    def evaluate(self, dataset):
+        losses = [0.0 for _ in range(len(self.model.prediction_sizes))]
+        accuracies = [0.0 for _ in range(len(self.model.prediction_sizes))]
+        for x in dataset:
+            x = x["text"]
+            x = torch.as_tensor([self.tokenizer.encode(x).ids], dtype=torch.int64)
+            x = x.to(self.model.pos_embeddings.device)
+            target = x[:, 1: self.model.context_length + 1]
+            x = x[:, :min(self.model.context_length, x.size(1) - 1)]
+            for index, logits in enumerate(self.model(x)):
+                logits = logits.transpose(-2, -1)
+                loss = self.loss(logits, target)
+                losses[index] += loss.cpu().item()
+                accuracy = (logits.argmax(1) == target).sum() / target.size(1)
+                accuracies[index] += accuracy.cpu().item()
+        losses = [loss_sum / len(dataset) for loss_sum in losses]
+        accuracies = [accuracy_sum / len(dataset) for accuracy_sum in accuracies]
+        return losses, accuracies

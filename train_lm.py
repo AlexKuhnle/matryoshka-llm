@@ -117,7 +117,7 @@ if __name__ == "__main__":
     )
 
     callbacks = list()
-    callbacks.append(ParameterGradientLogger(model))
+    # callbacks.append(ParameterGradientLogger(model))
 
     # from lightning.pytorch.callbacks import DeviceStatsMonitor, StochasticWeightAveraging
     # callbacks.append(DeviceStatsMonitor(cpu_stats=True))
@@ -131,7 +131,7 @@ if __name__ == "__main__":
         max_epochs=int(num_epochs),
         val_check_interval=0.05,
         gradient_clip_val=model.trainer_kwargs["gradient_clipping"],
-        log_every_n_steps=100,
+        log_every_n_steps=1000,
         callbacks=callbacks,
         accumulate_grad_batches=model.trainer_kwargs["accumulate_grad_batches"],
     )

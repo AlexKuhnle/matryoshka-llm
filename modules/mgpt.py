@@ -2,7 +2,6 @@ import torch
 from typing import Callable, List, Optional, Sequence, Tuple
 
 from .gpt import GPT
-from .mmlp import MMLP
 from .mtransformer import MTransformer
 from .position import init_position_scheme
 
@@ -81,9 +80,10 @@ class MGPT(torch.nn.Module):
 
         self.final_norm = normalization_module(self.trafo_sizes)
 
+        self.prediction_sizes = list(self.trafo_sizes)
         self.predictions = torch.nn.ModuleList([
-            torch.nn.Linear(trafo_size, vocab_size, bias=bias)
-            for trafo_size in self.trafo_sizes
+            torch.nn.Linear(pred_size, vocab_size, bias=bias)
+            for pred_size in self.prediction_sizes
         ])
     
     def get_nested_kwargs(self, index, force_non_matryoshka):
@@ -181,6 +181,9 @@ class MGPT(torch.nn.Module):
                 x, kv_cache[n] = trafo(x, **kwargs)
 
         x = self.final_norm(x)
-        x = [prediction(x[..., :trafo_size]) for prediction, trafo_size in zip(self.predictions, self.trafo_sizes)]
+        x = [
+            prediction(x[..., :pred_size])
+            for prediction, pred_size in zip(self.predictions, self.prediction_sizes)
+        ]
 
         return x

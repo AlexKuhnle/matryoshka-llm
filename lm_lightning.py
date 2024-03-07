@@ -42,6 +42,9 @@ class LMLightning(lightning.LightningModule):
         for module_name, module in self.model.named_modules():
             assign_log_function_to_module(module, f"gpt-{module_name}")
 
+    def configure_optimizers(self):
+        return self.optimizer_module(self.parameters(), **self.optimizer_kwargs)
+
     def forward(
         self,
         x="",
@@ -205,5 +208,21 @@ class LMLightning(lightning.LightningModule):
         self.log(f"accuracy{self.model.trafo_size}", accuracy, batch_size=x.size(0))
         return {f"loss{self.model.trafo_size}": loss, f"accuracy{self.model.trafo_size}": accuracy}
 
-    def configure_optimizers(self):
-        return self.optimizer_module(self.parameters(), **self.optimizer_kwargs)
+    def evaluate(self, dataset):
+        loss_sum = 0.0
+        accuracy_sum = 0.0
+        for x in dataset:
+            x = x["text"]
+            x = torch.as_tensor([self.tokenizer.encode(x).ids], dtype=torch.int64)
+            x = x.to(self.model.pos_embeddings.device)
+            target = x[:, 1: self.model.context_length + 1]
+            x = x[:, :min(self.model.context_length, x.size(1) - 1)]
+            logits = self.model(x)
+            logits = logits.transpose(-2, -1)
+            loss = self.loss(logits, target)
+            loss_sum += loss.cpu().item()
+            accuracy = (logits.argmax(1) == target).sum() / target.size(1)
+            accuracy_sum += accuracy.cpu().item()
+        loss = loss_sum / len(dataset)
+        accuracy = accuracy_sum / len(dataset)
+        return loss, accuracy

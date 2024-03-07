@@ -5,14 +5,12 @@ import sys
 import tokenizers
 import torch
 
-from callbacks import ParameterGradientLogger
 from mlm_lightning import MLMLightning
-from modules.mgpt import MGPT
-from modules.mrms_norm import MRMSNorm
+from modules.mgpt_ablation import MGPTAblation
+from modules.rms_norm import RMSNorm
 
 
 if __name__ == "__main__":
-    DEBUG = False
     dataset_name = sys.argv[1]
     model_name = sys.argv[2]
     suffix = sys.argv[3]
@@ -32,16 +30,13 @@ if __name__ == "__main__":
     if num_epochs < 1.0:
         train_dataset = train_dataset.select(list(range(int(len(train_dataset) * num_epochs))))
         num_epochs = 1
-    elif DEBUG:
-        train_dataset = train_dataset.select(list(range(10)))
-        test_dataset = test_dataset.select(list(range(10)))
 
     tokenizer = tokenizers.Tokenizer.from_file(f"data/tokenizers/{dataset_name}-bpe")
     os.makedirs(f"lightning_logs_lm/{dataset_name}-{model_name}-{suffix}", exist_ok=True)
     tokenizer.save(f"lightning_logs_lm/{dataset_name}-{model_name}-{suffix}/tokenizer")
 
     if model_name == "gpt":
-        model_cls = MGPT
+        model_cls = MGPTAblation
     else:
         raise NotImplementedError
 
@@ -51,18 +46,20 @@ if __name__ == "__main__":
         model_kwargs=dict(
             vocab_size=tokenizer.get_vocab_size(),
             context_length=1024,
+            prediction_sizes=[64, 128, 256, 512, 1024],
+            prediction_multihead=True,
             num_trafos=8,
-            trafo_sizes=[64, 128, 256, 512, 1024],
+            trafo_size=1024,
             embedding_norm=False,
             position_scheme="rope",
             position_per_layer=True,
-            normalization_module=MRMSNorm,
+            normalization_module=RMSNorm,
             mhsa_num_heads=8,
             mhsa_kv_groups=None,
-            mhsa_head_sizes=None,
-            mhsa_qk_sizes=None,
+            mhsa_head_size=None,
+            mhsa_qk_size=None,
             mhsa_torch_sdpa=True,
-            mlp_hidden_sizes=[[256, 512, 1024, 2048, 4096]],
+            mlp_hidden_sizes=[4096],
             mlp_activation_module=torch.nn.SiLU,
             mlp_glu=True,
             bias=False,
@@ -105,7 +102,6 @@ if __name__ == "__main__":
     print(f"test:  {len(test_dataset)}")
     print(f"vocab: {tokenizer.get_vocab_size()}")
 
-    batch_size = 8
     train_dataloader = torch.utils.data.DataLoader(
         train_dataset, batch_size=model.trainer_kwargs["batch_size"], num_workers=3,
     )
@@ -117,23 +113,12 @@ if __name__ == "__main__":
         "lightning_logs_lm", name=f"{dataset_name}-{model_name}-{suffix}",
     )
 
-    callbacks = list()
-    # callbacks.append(ParameterGradientLogger(model))
-
-    # from lightning.pytorch.callbacks import DeviceStatsMonitor, StochasticWeightAveraging
-    # callbacks.append(DeviceStatsMonitor(cpu_stats=True))
-    # callbacks.append(StochasticWeightAveraging(
-    #     swa_lrs, swa_epoch_start=0.8, annealing_epochs=10, annealing_strategy='cos',
-    #     avg_fn=None, device=device(type='cpu')
-    # ))
-
     trainer = lightning.Trainer(
         logger=logger,
         max_epochs=int(num_epochs),
         val_check_interval=0.05,
         gradient_clip_val=model.trainer_kwargs["gradient_clipping"],
         log_every_n_steps=1000,
-        callbacks=callbacks,
         accumulate_grad_batches=model.trainer_kwargs["accumulate_grad_batches"],
     )
 

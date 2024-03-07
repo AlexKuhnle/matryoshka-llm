@@ -1,16 +1,18 @@
 import torch
-from typing import Callable, List, Optional, Sequence, Tuple
+from typing import Callable, Optional, Sequence
 
 from .position import init_position_scheme
 from .transformer import Transformer
 
 
-class GPT(torch.nn.Module):
+class MGPTAblation(torch.nn.Module):
 
     def __init__(
         self,
         vocab_size: int,
         context_length: int,
+        prediction_sizes: Sequence[int],
+        prediction_multihead: bool,
         num_trafos: int,
         trafo_size: int,
         embedding_norm: bool,
@@ -75,26 +77,29 @@ class GPT(torch.nn.Module):
 
         self.final_norm = normalization_module(self.trafo_size)
 
-        self.prediction = torch.nn.Linear(self.trafo_size, vocab_size, bias=bias)
-
-    def empty_kv_cache(self, batch_size):
-        return [(
-            torch.empty(size=(batch_size, trafo.mhsa.num_heads, 0, trafo.mhsa.qk_size)).cuda(),
-            torch.empty(size=(batch_size, trafo.mhsa.num_heads, 0, trafo.mhsa.head_size)).cuda(),
-        ) for trafo in self.trafos]
+        assert all(
+            prediction_sizes[n] < prediction_sizes[n + 1]
+            for n in range(len(prediction_sizes) - 1)
+        )
+        assert prediction_sizes[-1] == trafo_size
+        self.prediction_sizes = list(self.prediction_sizes)
+        self.prediction_multihead = prediction_multihead
+        if self.prediction_multihead:
+            self.predictions = torch.nn.ModuleList([
+                torch.nn.Linear(pred_size, vocab_size, bias=bias)
+                for pred_size in self.prediction_sizes
+            ])
+        else:
+            self.prediction = torch.nn.Linear(self.trafo_size, vocab_size, bias=bias)
 
     def forward(
         self,
         x,
-        kv_cache: Optional[List[Tuple[torch.Tensor, torch.Tensor]]] = None,
     ):
-        if self.requires_mask_tensor or kv_cache is not None:
-            q_length = kv_length = x.size(1)
-            if kv_cache is not None:
-                kv_length += kv_cache[0][0].size(2)
-                # kv_length = q_length + len(kv_cache[0][0])
-            mask = torch.ones(q_length, kv_length, dtype=torch.bool, device=x.device)
-            mask = mask.tril(diagonal=(kv_length - q_length))
+        if self.requires_mask_tensor:
+            q_length = x.size(1)
+            mask = torch.ones(q_length, q_length, dtype=torch.bool, device=x.device)
+            mask = mask.tril()
         else:
             mask = True
 
@@ -110,15 +115,17 @@ class GPT(torch.nn.Module):
             kwargs = dict(mask=mask)
             if self.pos_per_layer:
                 kwargs["fn_apply_pos"] = self.fn_apply_pos
-            if kv_cache is not None:
-                kwargs["kv_cache"] = kv_cache[n]
 
-            if kv_cache is None:
-                x = trafo(x, **kwargs)
-            else:
-                x, kv_cache[n] = trafo(x, **kwargs)
+            x = trafo(x, **kwargs)
 
         x = self.final_norm(x)
-        x = self.prediction(x)
+        if self.prediction_multihead:
+            x = [
+                prediction(x[..., :pred_size])
+                for prediction, pred_size in zip(self.predictions, self.prediction_sizes)
+            ]
+        else:
+            x = self.prediction(x)
+            x = [x[..., :pred_size] for pred_size in self.prediction_sizes]
 
         return x
