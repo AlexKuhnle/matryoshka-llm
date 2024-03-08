@@ -140,3 +140,4 @@ cython_debug/
 
 /data
 /lightning_logs_*
+/lightning_logs/*/version_*/checkpoints
