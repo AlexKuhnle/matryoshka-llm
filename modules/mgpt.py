@@ -124,7 +124,7 @@ class MGPT(torch.nn.Module):
         module.embedding.weight.copy_(self.embedding.weight[:, :self.trafo_sizes[index]])
         if self.embedding_norm is not None:
             self.embedding_norm.init_nested_module(index, module.embedding_norm)
-        module.pos_embeddings.copy_(self.pos_embeddings[:, :self.trafo_sizes[index]])
+        module.pos_embeddings.copy_(self.pos_embeddings[:, :module.pos_embeddings.size(1)])
         for source, target in zip(self.trafos, module.trafos):
             source.init_nested_module(index, target)
         self.final_norm.init_nested_module(index, module.final_norm)
