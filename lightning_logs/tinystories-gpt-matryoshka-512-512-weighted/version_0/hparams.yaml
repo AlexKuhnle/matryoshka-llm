@@ -32,5 +32,5 @@ optimizer_kwargs:
   lr: 0.001
 trainer_kwargs:
   accumulate_grad_batches: 1
-  batch_size: 32
+  batch_size: 16
   gradient_clipping: 1.0
