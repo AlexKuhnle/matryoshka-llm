@@ -79,6 +79,7 @@ if __name__ == "__main__":
             batch_size=16,
             gradient_clipping=1.0,
             accumulate_grad_batches=1,
+            precision="16",
         )
     )
     model.cuda()
@@ -134,6 +135,7 @@ if __name__ == "__main__":
         log_every_n_steps=1000,
         callbacks=callbacks,
         accumulate_grad_batches=model.trainer_kwargs["accumulate_grad_batches"],
+        precision=model.trainer_kwargs["precision"],
     )
 
     trainer.fit(model, train_dataloader, test_dataloader)
