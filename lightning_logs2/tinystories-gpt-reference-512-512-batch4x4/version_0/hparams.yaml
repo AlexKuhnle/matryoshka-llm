@@ -1,0 +1,27 @@
+model_kwargs:
+  bias: false
+  context_length: 1024
+  dropout: 0.0
+  embedding_norm: false
+  mhsa_head_size: null
+  mhsa_kv_groups: null
+  mhsa_num_heads: 8
+  mhsa_qk_size: null
+  mhsa_torch_sdpa: true
+  mlp_activation_module: !!python/name:torch.nn.modules.activation.SiLU ''
+  mlp_glu: true
+  mlp_hidden_sizes:
+  - 512
+  normalization_module: !!python/name:modules.rms_norm.RMSNorm ''
+  num_trafos: 8
+  position_per_layer: true
+  position_scheme: rope
+  trafo_size: 512
+  vocab_size: 4096
+optimizer: !!python/name:torch.optim.adam.Adam ''
+optimizer_kwargs:
+  lr: 0.001
+trainer_kwargs:
+  accumulate_grad_batches: 4
+  batch_size: 4
+  gradient_clipping: 1.0
